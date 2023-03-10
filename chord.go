@@ -49,6 +49,42 @@ type DHT struct {
 	nodes map[NodeAddr]*Node
 }
 
+func help() {
+	fmt.Print("
+	help) shows commands\n
+	quit) quits program\n
+	")
+}
+
+func main() {
+	quit := false
+	// read inputs
+	for quit == false {
+		fmt.Print("> ")
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		err := scanner.Err()
+		if err != nil {
+			log.Fatal(err)
+		}
+		s := strings.Split(scanner.Text(), " ")
+		switch s[0] {
+		case "help":
+			help()
+		case "quit":
+			quit = true
+		case "ping":
+		case "port":
+		case "get":
+		case "put":
+		case "delete":
+		case "dump":
+		default:
+			fmt.Print("Unrecognized command\n")
+			help()
+		}
+	}
+}
 func hash(elt string) *big.Int {
 	hasher := sha1.New()
 	hasher.Write([]byte(elt))
