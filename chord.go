@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/sha1"
 	"fmt"
 	"log"
@@ -8,7 +9,9 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"os"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -19,10 +22,12 @@ const (
 	keySize       = sha1.Size * 8
 )
 
-
 type Key string
-
 type NodeAddress string
+type nothing struct{}
+
+var two = big.NewInt(2)
+var hashMod = new(big.Int).Exp(big.NewInt(2), big.NewInt(keySize), nil)
 
 type Node struct {
 	Address     NodeAddress
@@ -33,21 +38,21 @@ type Node struct {
 	Bucket map[Key]string
 }
 
-/*func call(address, method string, request, response interface{}) {
+func Call(address, method string, request, response interface{}) error {
 	client, err := rpc.DialHTTP("tcp", address)
 	if err != nil {
-		log.printf("rpc.DialHTTP: %v", err)
+		log.Printf("rpc.DialHTTP: %v", err)
 		return err
 	}
 	defer client.Close()
 
 	if err = client.Call(method, request, response); err != nil {
-		log.printf("client.Call: %v", err)
+		log.Printf("client.Call: %v", err)
 		return err
 	}
 
 	return nil
-}*/
+}
 
 func help() {
 	fmt.Print("\nhelp) shows commands\n" +
@@ -62,23 +67,28 @@ func server(address, port string, node Node) {
 		log.Print("Listen Error: ", err)
 	}
 	for {
-		if err := http.Serve(1, nil); err != nil {
+		if err := http.Serve(l, nil); err != nil {
 			log.Print("HTTP Serve Error: ", err)
 		}
 	}
 }
 
-func (n *Node) Ping() string {
+// func (n *Node) Ping() string {
+// 	log.Print("Pinged")
+// 	return "Pong"
+// }
+func (n *Node) Ping(_ *nothing, reply *string) error {
 	log.Print("Pinged")
-	return "Pong"
+	*reply = "Pong"
+	return nil
 }
 
 func main() {
 	quit := false
 	listening := false
 	// read inputs
-	address := getLocalAddress()
 	port := "3410"
+	address := getLocalAddress()
 	node := new(Node)
 	for quit == false {
 		fmt.Print("> ")
@@ -95,14 +105,16 @@ func main() {
 		case "quit":
 			quit = true
 		case "ping":
-			var junk nothing
-			var returns string
-			call("localhost:"+port, node.Ping, &junk, &returns)
-			log.Print(returns)
+			var reply string
+			if err := Call("localhost:"+port, "Node.Ping", &nothing{}, &reply); err != nil {
+				log.Printf("error calling Ping: %v", err)
+			} else {
+				log.Printf("received reply from Ping: %s", reply)
+			}
 		case "create":
 			if listening == false {
 				listening = true
-				go server(address, port, node)
+				go server(address, port, *node)
 			} else {
 				log.Print("Already created or joined a node.")
 			}
@@ -152,58 +164,24 @@ func getLocalAddress() string {
 	return localAddr.IP.String()
 }
 
-func call(address string, method string, request interface{}, reply interface{}) error {
-	client, err := rpc.Dial("tcp", address)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	err = client.Call(method, request, reply)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// func (n *Node) findSuccessor(id int) (*Node, error) {
-// 	if id <= n.id || id > n.successor.id {
-// 		closest, _ := n.closestPrecedingNode(id)
-// 		return closest.findSuccessor(id)
+// func call(address string, method string, request interface{}, reply interface{}) error {
+// 	client, err := rpc.Dial("tcp", address)
+// 	if err != nil {
+// 		return err
 // 	}
-// 	return n.successor, nil
+// 	defer client.Close()
+
+// 	err = client.Call(method, request, reply)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	return nil
 // }
 
-// func (n *Node) closestPrecedingNode(id int) (*Node, error) {
-// 	for i := m - 1; i >= 0; i-- {
-// 		if n.fingers[i] != nil && n.fingers[i].id > n.id && n.fingers[i].id < id {
-// 			return n.fingers[i], nil
-// 		}
-// 	}
-// 	return n, nil
-// }
-
-// func (n *Node) find(id int, start *Node) (*Node, error) {
-// 	found, nextNode := false, start
-// 	i := 0
-// 	for !found && i < maxSteps {
-// 		var err error
-// 		nextNode, err = nextNode.findSuccessor(id)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		found = n.id == nextNode.id || (id > n.id && id <= nextNode.id) || (n.id > nextNode.id && (id > n.id || id <= nextNode.id))
-// 		i++
-// 	}
-// 	if found {
-// 		return nextNode, nil
-// 	}
-// 	return nil, fmt.Errorf("failed to find successor for key %d", id)
-// }
 func create(port int) *Node {
 	node := new(Node)
-	node.Values = make(map[string]string)
+	node.Bucket = make(map[Key]string)
 
 	// Start RPC server
 	rpc.Register(node)
@@ -232,82 +210,6 @@ func ping(address string) error {
 
 	fmt.Println(pong)
 	return nil
-}
-
-func (n *Node) Get(key string, value *string) error {
-	*value = n.Values[key]
-	return nil
-}
-func get(address, key string) (string, error) {
-	client, err := rpc.DialHTTP("tcp", address)
-	if err != nil {
-		return "", err
-	}
-
-	var value string
-	err = client.Call("Node.Get", key, &value)
-	if err != nil {
-		return "", err
-	}
-
-	return value, nil
-}
-func (n *Node) Put(kv [2]string, success *bool) error {
-	n.Values[kv[0]] = kv[1]
-	*success = true
-	return nil
-}
-func put(address, key, value string) (bool, error) {
-	client, err := rpc.DialHTTP("tcp", address)
-	if err != nil {
-		return false, err
-	}
-
-	var success bool
-	err = client.Call("Node.Put", [2]string{key, value}, &success)
-	if err != nil {
-		return false, err
-	}
-
-	return success, nil
-}
-
-func (n *Node) Delete(key string, success *bool) error {
-	delete(n.Values, key)
-	*success = true
-	return nil
-}
-func delete(address, key string) (bool, error) {
-	client, err := rpc.DialHTTP("tcp", address)
-	if err != nil {
-		return false, err
-	}
-
-	var success bool
-	err = client.Call("Node.Delete", key, &success)
-	if err != nil {
-		return false, err
-	}
-	return success, nil
-}
-func (dht *DHT) putRandom(n int) {
-	panic("imp")
-}
-
-func (dht *DHT) dump() {
-	panic("imp")
-}
-
-func (n *Node) create() error {
-	panic("imp")
-}
-
-func (n *Node) stabilize() error {
-	panic("imp")
-}
-
-func (n *Node) notify(node NodeAddr) error {
-	panic("imp")
 }
 
 func (n *Node) fixFingers() error {
