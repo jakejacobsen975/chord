@@ -19,35 +19,20 @@ const (
 	keySize       = sha1.Size * 8
 )
 
-var two = big.NewInt(2)
-var hashMod = new(big.Int).Exp(big.NewInt(2), big.NewInt(keySize), nil)
-
-type FingerEntry struct {
-	Start     int
-	Successor *Node
-}
-
-type Node struct {
-	id        *big.Int
-	successor *Node
-	Values    map[string]string
-}
 
 type Key string
-type Value string
-type NodeAddr string
-type Finger [160]NodeAddr
 
-// type Node struct {
-//     Id int
-//     Successor *Node
-//     Predecessor *Node
-//     FingerTable []FingerEntry
-// }
+type NodeAddress string
 
-type DHT struct {
-	nodes map[NodeAddr]*Node
+type Node struct {
+	Address     NodeAddress
+	FingerTable []NodeAddress
+	Predecessor NodeAddress
+	Successors  []NodeAddress
+
+	Bucket map[Key]string
 }
+
 
 func help() {
 	fmt.Print("
@@ -59,6 +44,7 @@ func help() {
 func main() {
 	quit := false
 	// read inputs
+	port := "3410"
 	for quit == false {
 		fmt.Print("> ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -75,6 +61,7 @@ func main() {
 			quit = true
 		case "ping":
 		case "port":
+			port = s[1]
 		case "get":
 		case "put":
 		case "delete":
