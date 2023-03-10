@@ -33,25 +33,60 @@ type Node struct {
 	Bucket map[Key]string
 }
 
+/*func call(address, method string, request, response interface{}) {
+	client, err := rpc.DialHTTP("tcp", address)
+	if err != nil {
+		log.printf("rpc.DialHTTP: %v", err)
+		return err
+	}
+	defer client.Close()
+
+	if err = client.Call(method, request, response); err != nil {
+		log.printf("client.Call: %v", err)
+		return err
+	}
+
+	return nil
+}*/
 
 func help() {
-	fmt.Print("
-	help) shows commands\n
-	quit) quits program\n
-	")
+	fmt.Print("\nhelp) shows commands\n" +
+		"quit) quits program\n")
+}
+
+func server(address, port string, node Node) {
+	rpc.Register(node)
+	rpc.HandleHTTP()
+	l, err := net.Listen("tcp", port)
+	if err != nil {
+		log.Print("Listen Error: ", err)
+	}
+	for {
+		if err := http.Serve(1, nil); err != nil {
+			log.Print("HTTP Serve Error: ", err)
+		}
+	}
+}
+
+func (n *Node) Ping() string {
+	log.Print("Pinged")
+	return "Pong"
 }
 
 func main() {
 	quit := false
+	listening := false
 	// read inputs
+	address := getLocalAddress()
 	port := "3410"
+	node := new(Node)
 	for quit == false {
 		fmt.Print("> ")
 		scanner := bufio.NewScanner(os.Stdin)
 		scanner.Scan()
 		err := scanner.Err()
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
 		}
 		s := strings.Split(scanner.Text(), " ")
 		switch s[0] {
@@ -60,12 +95,25 @@ func main() {
 		case "quit":
 			quit = true
 		case "ping":
+			var junk nothing
+			var returns string
+			call("localhost:"+port, node.Ping, &junk, &returns)
+			log.Print(returns)
+		case "create":
+			if listening == false {
+				listening = true
+				go server(address, port, node)
+			} else {
+				log.Print("Already created or joined a node.")
+			}
+		case "join":
 		case "port":
 			port = s[1]
 		case "get":
 		case "put":
 		case "delete":
 		case "dump":
+		case "":
 		default:
 			fmt.Print("Unrecognized command\n")
 			help()
@@ -282,8 +330,8 @@ func (n *Node) listenAndServe() error {
 	panic("imp")
 }
 
-func main() {
+/*func main() {
 	// : initialize DHT, parse command-line arguments, and start REPL
 	panic("imp")
 
-}
+}*/
