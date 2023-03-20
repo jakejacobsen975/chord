@@ -24,7 +24,7 @@ const (
 
 type Key string
 type NodeAddress string
-type nothing struct{}
+type Nothing struct{}
 
 var two = big.NewInt(2)
 var hashMod = new(big.Int).Exp(big.NewInt(2), big.NewInt(keySize), nil)
@@ -60,8 +60,7 @@ func help() {
 		"port <value>: changes port\n")
 }
 
-func server(address, port string) {
-	node := new(Node)
+func server(address, port string, node *Node) {
 	rpc.Register(node)
 	rpc.HandleHTTP()
 	l, err := net.Listen("tcp", port)
@@ -79,7 +78,7 @@ func server(address, port string) {
 // 	log.Print("Pinged")
 // 	return "Pong"
 // }
-func (n *Node) Ping(_ *nothing, reply *string) error {
+func (n *Node) Ping(_ *Nothing, reply *string) error {
 	log.Print("Pinged")
 	*reply = "Pong"
 	return nil
@@ -108,7 +107,7 @@ func main() {
 			quit = true
 		case "ping":
 			var reply string
-			if err := Call("localhost:"+port, "Node.Ping", &nothing{}, &reply); err != nil {
+			if err := Call("localhost:"+port, "Node.Ping", &Nothing{}, &reply); err != nil {
 				log.Printf("error calling Ping: %v", err)
 			} else {
 				log.Printf("received reply from Ping: %s", reply)
@@ -116,7 +115,7 @@ func main() {
 		case "create":
 			if listening == false {
 				listening = true
-				go server(address, port)
+				go server(address, ":"+port, node)
 			} else {
 				log.Print("Already created or joined a node.")
 			}
