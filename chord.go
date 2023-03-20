@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -62,6 +61,8 @@ func help() {
 func server(address, port string, node *Node) {
 	rpc.Register(node)
 	rpc.HandleHTTP()
+	node.Bucket = make(map[Key]string)
+
 	l, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Print("Listen Error: ", err)
@@ -73,10 +74,6 @@ func server(address, port string, node *Node) {
 	}
 }
 
-// func (n *Node) Ping() string {
-// 	log.Print("Pinged")
-// 	return "Pong"
-// }
 func (n *Node) Ping(_ *Nothing, reply *string) error {
 	log.Print("Pinged")
 	*reply = "Pong"
@@ -114,6 +111,7 @@ func main() {
 		case "create":
 			if listening == false {
 				listening = true
+				log.Print("start server: creating new ring")
 				go server(address, ":"+port, node)
 			} else {
 				log.Print("Already created or joined a node.")
@@ -179,23 +177,6 @@ func getLocalAddress() string {
 // 	return nil
 // }
 
-func create(port int) *Node {
-	node := new(Node)
-	node.Bucket = make(map[Key]string)
-
-	// Start RPC server
-	rpc.Register(node)
-	rpc.HandleHTTP()
-
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-	if err != nil {
-		log.Fatal("listen error: ", err)
-	}
-
-	go http.Serve(listener, nil)
-
-	return node
-}
 func ping(address string) error {
 	client, err := rpc.DialHTTP("tcp", address)
 	if err != nil {
@@ -211,7 +192,24 @@ func ping(address string) error {
 	fmt.Println(pong)
 	return nil
 }
+func (n *Node) Delete(key string, success *bool) error {
+	// delete(n.Bucket, key)
+	*success = true
+	return nil
+}
+func delete(address, key string) error {
+	client, err := rpc.DialHTTP("tcp", address)
+	if err != nil {
+		return err
+	}
 
+	var success bool
+	err = client.Call("Node.Delete", key, &success)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 func (n *Node) fixFingers() error {
 	panic("imp")
 }
