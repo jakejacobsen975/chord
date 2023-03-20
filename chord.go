@@ -56,10 +56,12 @@ func Call(address, method string, request, response interface{}) error {
 
 func help() {
 	fmt.Print("\nhelp) shows commands\n" +
-		"quit) quits program\n")
+		"quit) quits program\n" +
+		"port <value>: changes port\n")
 }
 
-func server(address, port string, node Node) {
+func server(address, port string) {
+	node := new(Node)
 	rpc.Register(node)
 	rpc.HandleHTTP()
 	l, err := net.Listen("tcp", port)
@@ -89,7 +91,7 @@ func main() {
 	// read inputs
 	port := "3410"
 	address := getLocalAddress()
-	node := new(Node)
+	//node := new(Node)
 	for quit == false {
 		fmt.Print("> ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -114,7 +116,7 @@ func main() {
 		case "create":
 			if listening == false {
 				listening = true
-				go server(address, port, *node)
+				go server(address, port)
 			} else {
 				log.Print("Already created or joined a node.")
 			}
