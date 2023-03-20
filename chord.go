@@ -55,7 +55,7 @@ func Call(address, method string, request, response interface{}) error {
 }
 
 func help() {
-	fmt.Print("\nhelp) shows commands\n" +
+	fmt.Print("help) shows commands\n" +
 		"quit) quits program\n" +
 		"port <value>: changes port\n")
 }
@@ -84,13 +84,19 @@ func (n *Node) Ping(_ *Nothing, reply *string) error {
 	return nil
 }
 
+func (n *Node) Put(args []string, _ *Nothing) error {
+	n.Bucket[Key(args[0])] = args[1]
+	return nil
+}
+
 func main() {
 	quit := false
 	listening := false
 	// read inputs
 	port := "3410"
 	address := getLocalAddress()
-	//node := new(Node)
+	node := new(Node)
+	arg = args[0]
 	for quit == false {
 		fmt.Print("> ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -124,6 +130,15 @@ func main() {
 			port = s[1]
 		case "get":
 		case "put":
+			if listening == true {
+				if err = Call(s[3], "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
+					log.Printf("error calling Put: %v", err)
+				} else {
+					log.Printf("Put key pair %s %s into bucket", s[1], s[2])
+				}
+			} else {
+				log.Print("Not in a circle")
+			}
 		case "delete":
 		case "dump":
 		case "":
