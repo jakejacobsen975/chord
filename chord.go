@@ -68,10 +68,13 @@ func create(address, port string, node *Node) {
 	rpc.HandleHTTP()
 	node.Bucket = make(map[Key]string)
 
+	log.Print("start server: creating new ring")
 	l, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Print("Listen Error: ", err)
 	}
+	log.Printf("Starting to listen on %s", address+port)
+	fmt.Print("> ")
 	for {
 		if err := http.Serve(l, nil); err != nil {
 			log.Print("HTTP Serve Error: ", err)
@@ -146,7 +149,6 @@ func main() {
 		case "create":
 			if listening == false {
 				listening = true
-				log.Print("start server: creating new ring")
 				go create(address, ":"+port, node)
 			} else {
 				log.Print("Already created or joined a node.")
@@ -162,10 +164,8 @@ func main() {
 			}
 		case "get":
 			if listening == true {
-				if err = Call(s[2], "Node.Get", []string{s[1]}, &Nothing{}); err != nil {
+				if err = Call(s[2], "Node.Get", s[1], &Nothing{}); err != nil {
 					log.Printf("error calling Get: %v", err)
-				} else {
-					log.Printf("key %s not in bucket", s[1])
 				}
 			} else {
 				log.Print("Not in a circle")
@@ -182,10 +182,8 @@ func main() {
 			}
 		case "delete":
 			if listening == true {
-				if err = Call(s[2], "Node.Delete", []string{s[1]}, &Nothing{}); err != nil {
+				if err = Call(s[2], "Node.Delete", s[1], &Nothing{}); err != nil {
 					log.Printf("error calling Delete: %v", err)
-				} else {
-					log.Printf("key %s not in bucket", s[1])
 				}
 			} else {
 				log.Print("Not in a circle")
@@ -229,22 +227,6 @@ func getLocalAddress() string {
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 
 	return localAddr.IP.String()
-}
-
-func ping(address string) error {
-	client, err := rpc.DialHTTP("tcp", address)
-	if err != nil {
-		return err
-	}
-
-	var pong string
-	err = client.Call("Node.Ping", "", &pong)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println(pong)
-	return nil
 }
 
 func (n *Node) fixFingers() error {
