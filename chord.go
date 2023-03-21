@@ -11,6 +11,7 @@ import (
 	"net/rpc"
 	"os"
 	"strings"
+	"sync"
 )
 
 const (
@@ -35,6 +36,7 @@ type Node struct {
 	Successors  []NodeAddress
 
 	Bucket map[Key]string
+	mu     sync.RWMutex
 }
 
 func Call(address, method string, request, response interface{}) error {
@@ -59,7 +61,7 @@ func help() {
 		"port <value>: changes port\n")
 }
 
-func server(address, port string, node *Node) {
+func create(address, port string, node *Node) {
 	rpc.Register(node)
 	rpc.HandleHTTP()
 	node.Bucket = make(map[Key]string)
@@ -85,7 +87,24 @@ func (n *Node) Put(args []string, _ *Nothing) error {
 	n.Bucket[Key(args[0])] = args[1]
 	return nil
 }
-
+func (n *Node) Delete(key string, _ *Nothing) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if _, ok := n.Bucket[Key(key)]; !ok {
+		log.Printf("Delete: key %s not found", key)
+	}
+	deleted := n.Bucket[Key(key)]
+	delete(n.Bucket, Key(key))
+	log.Printf("Delete: [%s] was removed", deleted)
+	return nil
+}
+func (n *Node) Get(key string, _ *Nothing) error {
+	if _, ok := n.Bucket[Key(key)]; !ok {
+		log.Printf("Get: key %s not found", key)
+	}
+	log.Printf("Get: found %s => %s", key, n.Bucket[Key(key)])
+	return nil
+}
 func main() {
 	quit := false
 	listening := false
@@ -93,7 +112,6 @@ func main() {
 	port := "3410"
 	address := getLocalAddress()
 	node := new(Node)
-	arg = args[0]
 	for quit == false {
 		fmt.Print("> ")
 		scanner := bufio.NewScanner(os.Stdin)
@@ -119,13 +137,19 @@ func main() {
 			if listening == false {
 				listening = true
 				log.Print("start server: creating new ring")
-				go server(address, ":"+port, node)
+				go create(address, ":"+port, node)
 			} else {
 				log.Print("Already created or joined a node.")
 			}
 		case "join":
 		case "port":
+			copy := port
 			port = s[1]
+			if copy == port {
+				log.Printf("port: set to %s", port)
+			} else {
+				log.Printf("port: insert new value")
+			}
 		case "get":
 		case "put":
 			if listening == true {
@@ -138,6 +162,15 @@ func main() {
 				log.Print("Not in a circle")
 			}
 		case "delete":
+			if listening == true {
+				if err = Call(s[2], "Node.Delete", []string{s[1]}, &Nothing{}); err != nil {
+					log.Printf("error calling Delete: %v", err)
+				} else {
+					log.Printf("key %s not in bucket", s[1])
+				}
+			} else {
+				log.Print("Not in a circle")
+			}
 		case "dump":
 		case "":
 		default:
@@ -178,21 +211,6 @@ func getLocalAddress() string {
 	return localAddr.IP.String()
 }
 
-// func call(address string, method string, request interface{}, reply interface{}) error {
-// 	client, err := rpc.Dial("tcp", address)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer client.Close()
-
-// 	err = client.Call(method, request, reply)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }
-
 func ping(address string) error {
 	client, err := rpc.DialHTTP("tcp", address)
 	if err != nil {
@@ -208,24 +226,7 @@ func ping(address string) error {
 	fmt.Println(pong)
 	return nil
 }
-func (n *Node) Delete(key string, success *bool) error {
-	// delete(n.Bucket, key)
-	*success = true
-	return nil
-}
-func delete(address, key string) error {
-	client, err := rpc.DialHTTP("tcp", address)
-	if err != nil {
-		return err
-	}
 
-	var success bool
-	err = client.Call("Node.Delete", key, &success)
-	if err != nil {
-		return err
-	}
-	return nil
-}
 func (n *Node) fixFingers() error {
 	panic("imp")
 }
