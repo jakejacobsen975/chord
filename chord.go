@@ -58,7 +58,9 @@ func Call(address, method string, request, response interface{}) error {
 func help() {
 	fmt.Print("help) shows commands\n" +
 		"quit) quits program\n" +
-		"port <value>: changes port\n")
+		"port <value>) changes port\n" +
+		"put <key> <value> <address>) adds key value pair\n" +
+		"create) creates new ring\n")
 }
 
 func create(address, port string, node *Node) {
@@ -87,6 +89,8 @@ func (n *Node) Ping(_ *Nothing, reply *string) error {
 }
 
 func (n *Node) Put(args []string, _ *Nothing) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.Bucket[Key(args[0])] = args[1]
 	return nil
 }
@@ -106,6 +110,23 @@ func (n *Node) Get(key string, _ *Nothing) error {
 		log.Printf("Get: key %s not found", key)
 	}
 	log.Printf("Get: found %s => %s", key, n.Bucket[Key(key)])
+	return nil
+}
+func (n *Node) dump() {
+	if len(n.Bucket) != 0 {
+		log.Print("Listing all key value pairs")
+		for k, v := range n.Bucket {
+			log.Printf("Key: %s, Value %s\n", k, v)
+		}
+	}
+	log.Print("Listing successors")
+	for _, v := range n.Successors {
+		log.Printf("%s\n", v)
+	}
+	log.Printf("Predecessor: %s\n", n.Predecessor)
+}
+func (n* Node) Join(address string, _ *Nothing) error {
+	n.Predecessor = NodeAddress(address)
 	return nil
 }
 func main() {
@@ -144,6 +165,16 @@ func main() {
 				log.Print("Already created or joined a node.")
 			}
 		case "join":
+			if listening == false {
+				if err = Call(s[1], "Node.Join", address + port, &Nothing{}); err != nil {
+					node.Successors = append(node.Successors, NodeAddress(s[1]))
+					listening = true
+				} else {
+					log.Print("Error joining circle")
+				}
+			} else {
+				log.Print("Already joined or created circle.")
+			}
 		case "port":
 			copy := port
 			port = s[1]
@@ -161,7 +192,7 @@ func main() {
 				log.Print("Not in a circle")
 			}
 		case "put":
-			if listening == true {
+			if listening == true && len(s) == 4 {
 				if err = Call(s[3], "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
 					log.Printf("error calling Put: %v", err)
 				} else {
@@ -179,6 +210,11 @@ func main() {
 				log.Print("Not in a circle")
 			}
 		case "dump":
+			if listening == true {
+				node.dump()
+			} else {
+				log.Print("Have not created or joined a circle yet")
+			}
 		case "":
 		default:
 			fmt.Print("Unrecognized command\n")
