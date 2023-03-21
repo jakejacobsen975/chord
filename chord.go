@@ -151,6 +151,15 @@ func main() {
 				log.Printf("port: insert new value")
 			}
 		case "get":
+			if listening == true {
+				if err = Call(s[2], "Node.Get", []string{s[1]}, &Nothing{}); err != nil {
+					log.Printf("error calling Get: %v", err)
+				} else {
+					log.Printf("key %s not in bucket", s[1])
+				}
+			} else {
+				log.Print("Not in a circle")
+			}
 		case "put":
 			if listening == true {
 				if err = Call(s[3], "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
