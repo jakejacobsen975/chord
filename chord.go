@@ -150,7 +150,7 @@ func main() {
 			if copy == port {
 				log.Printf("port: set to %s", port)
 			} else {
-				log.Printf("port: insert new value")
+				log.Printf("port: old value")
 			}
 		case "get":
 			if listening == true {
