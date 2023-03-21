@@ -125,7 +125,7 @@ func (n *Node) dump() {
 	}
 	log.Printf("Predecessor: %s\n", n.Predecessor)
 }
-func (n* Node) Join(address string, _ *Nothing) error {
+func (n *Node) Join(address string, _ *Nothing) error {
 	n.Predecessor = NodeAddress(address)
 	return nil
 }
@@ -166,7 +166,7 @@ func main() {
 			}
 		case "join":
 			if listening == false {
-				if err = Call(s[1], "Node.Join", address + port, &Nothing{}); err != nil {
+				if err = Call(s[1], "Node.Join", address+port, &Nothing{}); err != nil {
 					node.Successors = append(node.Successors, NodeAddress(s[1]))
 					listening = true
 				} else {
@@ -176,12 +176,10 @@ func main() {
 				log.Print("Already joined or created circle.")
 			}
 		case "port":
-			copy := port
-			port = s[1]
-			if copy == port {
-				log.Printf("port: set to %s", port)
+			if listening == false {
+				help()
 			} else {
-				log.Printf("port: old value")
+				port = s[1]
 			}
 		case "get":
 			if listening == true {
