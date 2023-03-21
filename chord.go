@@ -56,7 +56,8 @@ func Call(address, method string, request, response interface{}) error {
 func help() {
 	fmt.Print("help) shows commands\n" +
 		"quit) quits program\n" +
-		"port <value>: changes port\n")
+		"port <value>: changes port\n" +
+		"put <key> <value> <address>: adds key value pair\n")
 }
 
 func server(address, port string, node *Node) {
@@ -128,7 +129,7 @@ func main() {
 			port = s[1]
 		case "get":
 		case "put":
-			if listening == true {
+			if listening == true && len(s) == 4 {
 				if err = Call(s[3], "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
 					log.Printf("error calling Put: %v", err)
 				} else {
