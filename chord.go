@@ -89,6 +89,8 @@ func (n *Node) Ping(_ *Nothing, reply *string) error {
 }
 
 func (n *Node) Put(args []string, _ *Nothing) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.Bucket[Key(args[0])] = args[1]
 	return nil
 }
@@ -114,9 +116,18 @@ func (n *Node) dump() {
 	if len(n.Bucket) != 0 {
 		log.Print("Listing all key value pairs")
 		for k, v := range n.Bucket {
-			log.Print("Key: %s, Value %s\n", k, v)
+			log.Printf("Key: %s, Value %s\n", k, v)
 		}
 	}
+	log.Print("Listing successors")
+	for _, v := range n.Successors {
+		log.Printf("%s\n", v)
+	}
+	log.Printf("Predecessor: %s\n", n.Predecessor)
+}
+func (n* Node) Join(address string, _ *Nothing) error {
+	n.Predecessor = NodeAddress(address)
+	return nil
 }
 func main() {
 	quit := false
@@ -154,6 +165,16 @@ func main() {
 				log.Print("Already created or joined a node.")
 			}
 		case "join":
+			if listening == false {
+				if err = Call(s[1], "Node.Join", address + port, &Nothing{}); err != nil {
+					node.Successors = append(node.Successors, NodeAddress(s[1]))
+					listening = true
+				} else {
+					log.Print("Error joining circle")
+				}
+			} else {
+				log.Print("Already joined or created circle.")
+			}
 		case "port":
 			copy := port
 			port = s[1]
@@ -189,7 +210,11 @@ func main() {
 				log.Print("Not in a circle")
 			}
 		case "dump":
-			node.dump()
+			if listening == true {
+				node.dump()
+			} else {
+				log.Print("Have not created or joined a circle yet")
+			}
 		case "":
 		default:
 			fmt.Print("Unrecognized command\n")
