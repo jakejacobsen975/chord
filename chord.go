@@ -58,8 +58,9 @@ func Call(address, method string, request, response interface{}) error {
 func help() {
 	fmt.Print("help) shows commands\n" +
 		"quit) quits program\n" +
-		"port <value>: changes port\n" +
-		"put <key> <value> <address>: adds key value pair\n")
+		"port <value>) changes port\n" +
+		"put <key> <value> <address>) adds key value pair\n" +
+		"create) creates new ring\n")
 }
 
 func create(address, port string, node *Node) {
@@ -105,6 +106,14 @@ func (n *Node) Get(key string, _ *Nothing) error {
 	}
 	log.Printf("Get: found %s => %s", key, n.Bucket[Key(key)])
 	return nil
+}
+func (n *Node) dump() {
+	if len(n.Bucket) != 0 {
+		log.Print("Listing all key value pairs")
+		for k, v := range n.Bucket {
+			log.Print("Key: %s, Value %s\n", k, v)
+		}
+	}
 }
 func main() {
 	quit := false
@@ -182,6 +191,7 @@ func main() {
 				log.Print("Not in a circle")
 			}
 		case "dump":
+			node.dump()
 		case "":
 		default:
 			fmt.Print("Unrecognized command\n")
