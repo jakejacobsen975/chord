@@ -166,7 +166,7 @@ func main() {
 			}
 		case "join":
 			if listening == false {
-				if err = Call(s[1], "Node.Join", address+port, &Nothing{}); err != nil {
+				if err := Call(s[1], "Node.Join", address+":"+port, &Nothing{}); err == nil {
 					node.Successors = append(node.Successors, NodeAddress(s[1]))
 					listening = true
 				} else {
@@ -177,10 +177,11 @@ func main() {
 			}
 		case "port":
 			if listening == false {
-				help()
-			} else {
 				port = s[1]
+			} else {
+				help()
 			}
+			log.Printf("Changed port to %s", port)
 		case "get":
 			if listening == true {
 				if err = Call(s[2], "Node.Get", s[1], &Nothing{}); err != nil {
