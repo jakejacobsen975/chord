@@ -129,6 +129,31 @@ func (n *Node) Join(address string, _ *Nothing) error {
 	n.Predecessor = NodeAddress(address)
 	return nil
 }
+func (n *Node) GetPredecessor(_ *Nothing, predecessor NodeAddress) error {
+	predecessor = n.Predecessor
+	return nil
+}
+func (n *Node) stabilize() error {
+	var predecessor NodeAddress
+	if err := Call(string(n.Successors[0]), "Node.GetPredecessor", &Nothing{}, &predecessor); err != nil {
+		log.Printf("error while getting predecessor: %v", err)
+		return err
+	}
+	if between(hash(string(n.Address)), hash(string(predecessor)), hash(string(n.Successors[0])), false) {
+		n.Successors[0] = predecessor
+	}
+	if err := Call(string(n.Successors[0]), "Node.Notify", n.Address, &Nothing{}); err != nil {
+		log.Printf("error while notifying: %v", err)
+		return err
+	}
+	return nil
+}
+func (n *Node) Notify(address NodeAddress, _ *Nothing) error {
+	if(n.Predecessor == "" || between(hash(string(n.Predecessor)), hash(string(address)), hash(string(n.Address)), false)) {
+		n.Predecessor = address
+	}
+	return nil
+}
 func main() {
 	quit := false
 	listening := false
@@ -169,6 +194,7 @@ func main() {
 				if err := Call(s[1], "Node.Join", address+":"+port, &Nothing{}); err == nil {
 					node.Successors = append(node.Successors, NodeAddress(s[1]))
 					listening = true
+					log.Printf("Successfully join circle at %s:%s", address, port)
 				} else {
 					log.Print("Error joining circle")
 				}
