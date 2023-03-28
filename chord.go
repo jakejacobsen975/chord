@@ -137,7 +137,6 @@ func (n *Node) GetPredecessor(_ *Nothing, predecessor NodeAddress) error {
 	predecessor = n.Predecessor
 	return nil
 }
-<<<<<<< HEAD
 
 func (n *Node) Find_successor(id string, response find_successor_return) error {
 	if between(hash(string(id)), hash(string(n.Address)), hash(string(n.Successors[0])), true) {
@@ -198,7 +197,7 @@ func (n *Node) stabilize() error {
 			return err
 		}
 		successors = append([]NodeAddress{succPredecessor}, successors...)
-		if len(successors) <= maxSuccessors{
+		if len(successors) <= maxSuccessors {
 			successors = successors[:maxSuccessors]
 		}
 		n.Successors = successors
