@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	numSuccessors = 3
+	maxSuccessors = 3
 	m             = 32 // size of key space
 	maxSteps      = 32 // maximum number of steps in a lookup
 	base          = 2  // base of the finger table
@@ -137,6 +137,7 @@ func (n *Node) GetPredecessor(_ *Nothing, predecessor NodeAddress) error {
 	predecessor = n.Predecessor
 	return nil
 }
+<<<<<<< HEAD
 
 func (n *Node) Find_successor(id string, response find_successor_return) error {
 	if between(hash(string(id)), hash(string(n.Address)), hash(string(n.Successors[0])), true) {
@@ -169,16 +170,45 @@ func find(id string, start NodeAddress) NodeAddress {
 		log.Print("error there was no next node")
 	}
 }
+func (n *Node) GetSuccessors(_ *Nothing, successors []NodeAddress) error {
+	successors = n.Successors
+	return nil
+}
+
 func (n *Node) stabilize() error {
-	var predecessor NodeAddress
-	if err := Call(string(n.Successors[0]), "Node.GetPredecessor", &Nothing{}, &predecessor); err != nil {
+	var succPredecessor NodeAddress
+	if err := Call(string(n.Successors[0]), "Node.GetPredecessor", &Nothing{}, &succPredecessor); err != nil {
+		if len(n.Successors) == 1 {
+			n.Successors[0] = n.Address
+		} else {
+			n.Successors = n.Successors[1:]
+		}
 		log.Printf("error while getting predecessor: %v", err)
 		return err
 	}
-	if between(hash(string(n.Address)), hash(string(predecessor)), hash(string(n.Successors[0])), false) {
-		n.Successors[0] = predecessor
+	if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), false) {
+		var successors []NodeAddress
+		if err := Call(string(succPredecessor), "Node.GetSuccessors", &Nothing{}, &successors); err != nil {
+			if len(n.Successors) == 1 {
+				n.Successors[0] = n.Address
+			} else {
+				n.Successors = n.Successors[1:]
+			}
+			log.Printf("error while getting successors: %v", err)
+			return err
+		}
+		successors = append([]NodeAddress{succPredecessor}, successors...)
+		if len(successors) <= maxSuccessors{
+			successors = successors[:maxSuccessors]
+		}
+		n.Successors = successors
 	}
 	if err := Call(string(n.Successors[0]), "Node.Notify", n.Address, &Nothing{}); err != nil {
+		if len(n.Successors) == 1 {
+			n.Successors[0] = n.Address
+		} else {
+			n.Successors = n.Successors[1:]
+		}
 		log.Printf("error while notifying: %v", err)
 		return err
 	}
