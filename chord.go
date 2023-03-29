@@ -168,6 +168,41 @@ func find(id string, start NodeAddress) NodeAddress {
 	} else {
 		log.Print("error there was no next node")
 	}
+	return ""
+}
+func (n *Node) put_all(kv map[string]string, reply *bool) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	for k, v := range kv {
+		n.Bucket[Key(k)] = v
+	}
+
+	*reply = true
+	return nil
+}
+
+// get_all gathers all keys that belong to the new node between this node and its predecessor
+// and removes them from the local bucket. It returns a map of the removed key/value pairs.
+func (n *Node) get_all(addr string, reply *map[string]string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// determine the range of keys that belong to the new node
+	keysToRemove := make(map[string]string)
+	for k, v := range n.Bucket {
+		if between(hash(string(n.Predecessor)), hash(string(addr)), hash(string(k)), false) {
+			keysToRemove[string(k)] = v
+		}
+	}
+
+	// remove the keys from the local bucket
+	for k := range keysToRemove {
+		delete(n.Bucket, Key(k))
+	}
+
+	*reply = keysToRemove
+	return nil
 }
 func (n *Node) GetSuccessors(_ *Nothing, successors []NodeAddress) error {
 	successors = n.Successors
