@@ -43,7 +43,6 @@ type Node struct {
 	Bucket map[Key]string
 	mu     sync.RWMutex
 }
-
 func Call(address, method string, request, response interface{}) error {
 	client, err := rpc.DialHTTP("tcp", address)
 	if err != nil {
