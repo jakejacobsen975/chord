@@ -25,6 +25,10 @@ const (
 type Key string
 type NodeAddress string
 type Nothing struct{}
+type find_successor_return struct {
+	Bool      bool
+	Successor NodeAddress
+}
 
 var two = big.NewInt(2)
 var hashMod = new(big.Int).Exp(big.NewInt(2), big.NewInt(keySize), nil)
@@ -132,10 +136,78 @@ func (n *Node) GetPredecessor(_ *Nothing, predecessor NodeAddress) error {
 	predecessor = n.Predecessor
 	return nil
 }
+
+func (n *Node) Find_successor(id string, response find_successor_return) error {
+	if between(hash(string(id)), hash(string(n.Address)), hash(string(n.Successors[0])), true) {
+		response.Successor = n.Successors[0]
+		response.Bool = true
+	} else {
+		response.Bool = false
+		response.Successor = n.closest_preceding_node(id)
+	}
+
+	return nil
+}
+func (n *Node) closest_preceding_node(id string) NodeAddress {
+	// skip this loop if you do not have finger tables implemented yet
+	return n.Successors[0]
+	// find the successor of id
+}
+func find(id string, start NodeAddress) NodeAddress {
+	found, nextNode := false, start
+	nextNode_struct := find_successor_return{}
+	for i := 0; !found && i < maxSteps; i++ {
+		if err := Call(string(start), "Node.Find_successor", &Nothing{}, nextNode_struct); err == nil {
+			found = nextNode_struct.Bool
+			start = nextNode_struct.Successor
+		}
+	}
+	if found {
+		return nextNode
+	} else {
+		log.Print("error there was no next node")
+	}
+	return ""
+}
+func (n *Node) put_all(kv map[string]string, reply *bool) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	for k, v := range kv {
+		n.Bucket[Key(k)] = v
+	}
+
+	*reply = true
+	return nil
+}
+
+// get_all gathers all keys that belong to the new node between this node and its predecessor
+// and removes them from the local bucket. It returns a map of the removed key/value pairs.
+func (n *Node) get_all(addr string, reply *map[string]string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// determine the range of keys that belong to the new node
+	keysToRemove := make(map[string]string)
+	for k, v := range n.Bucket {
+		if between(hash(string(n.Predecessor)), hash(string(addr)), hash(string(k)), false) {
+			keysToRemove[string(k)] = v
+		}
+	}
+
+	// remove the keys from the local bucket
+	for k := range keysToRemove {
+		delete(n.Bucket, Key(k))
+	}
+
+	*reply = keysToRemove
+	return nil
+}
 func (n *Node) GetSuccessors(_ *Nothing, successors []NodeAddress) error {
 	successors = n.Successors
 	return nil
 }
+
 func (n *Node) stabilize() error {
 	var succPredecessor NodeAddress
 	if err := Call(string(n.Successors[0]), "Node.GetPredecessor", &Nothing{}, &succPredecessor); err != nil {
@@ -159,7 +231,7 @@ func (n *Node) stabilize() error {
 			return err
 		}
 		successors = append([]NodeAddress{succPredecessor}, successors...)
-		if len(successors) <= maxSuccessors{
+		if len(successors) <= maxSuccessors {
 			successors = successors[:maxSuccessors]
 		}
 		n.Successors = successors
@@ -176,7 +248,7 @@ func (n *Node) stabilize() error {
 	return nil
 }
 func (n *Node) Notify(address NodeAddress, _ *Nothing) error {
-	if(n.Predecessor == "" || between(hash(string(n.Predecessor)), hash(string(address)), hash(string(n.Address)), false)) {
+	if n.Predecessor == "" || between(hash(string(n.Predecessor)), hash(string(address)), hash(string(n.Address)), false) {
 		n.Predecessor = address
 	}
 	return nil
