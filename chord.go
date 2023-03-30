@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -182,13 +183,29 @@ func (n *Node) put_all(kv map[string]string, reply *bool) error {
 	return nil
 }
 
-// get_all gathers all keys that belong to the new node between this node and its predecessor
-// and removes them from the local bucket. It returns a map of the removed key/value pairs.
+func (n *Node) fixFingers(id string) {
+	i := rand.Intn(159) // choose a random index
+	response := find_successor_return{}
+	if err := n.Find_successor(id, response); err != nil {
+		log.Printf("error calling find_successor: %v", err)
+	}
+	n.FingerTable[i] = response.Successor
+
+	// loop and keep adding to successive entries as long as it is still in the right range
+	for j := i + 1; j < 160; j++ {
+		next := n.FingerTable[j-1]
+		if between(hash(string(next)), hash(string(id)), hash(string(n.FingerTable[j])), true) {
+			n.FingerTable[j] = next
+		} else {
+			break
+		}
+	}
+}
+
 func (n *Node) get_all(addr string, reply *map[string]string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	// determine the range of keys that belong to the new node
 	keysToRemove := make(map[string]string)
 	for k, v := range n.Bucket {
 		if between(hash(string(n.Predecessor)), hash(string(addr)), hash(string(k)), false) {
@@ -196,7 +213,6 @@ func (n *Node) get_all(addr string, reply *map[string]string) error {
 		}
 	}
 
-	// remove the keys from the local bucket
 	for k := range keysToRemove {
 		delete(n.Bucket, Key(k))
 	}
@@ -401,29 +417,3 @@ func getLocalAddress() string {
 
 	return localAddr.IP.String()
 }
-
-func (n *Node) fixFingers() error {
-	panic("imp")
-}
-
-func (n *Node) checkPredecessor() error {
-	panic("imp")
-}
-
-func (n *Node) start() error {
-	panic("imp")
-}
-
-func (n *Node) stop() error {
-	panic("imp")
-}
-
-func (n *Node) listenAndServe() error {
-	panic("imp")
-}
-
-/*func main() {
-	// : initialize DHT, parse command-line arguments, and start REPL
-	panic("imp")
-
-}*/
