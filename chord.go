@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -132,8 +133,8 @@ func (n *Node) Join(address string, _ *Nothing) error {
 	n.Predecessor = NodeAddress(address)
 	return nil
 }
-func (n *Node) GetPredecessor(_ *Nothing, predecessor NodeAddress) error {
-	predecessor = n.Predecessor
+func (n *Node) GetPredecessor(_ *Nothing, predecessor *NodeAddress) error {
+	predecessor = &n.Predecessor
 	return nil
 }
 
@@ -203,13 +204,17 @@ func (n *Node) get_all(addr string, reply *map[string]string) error {
 	*reply = keysToRemove
 	return nil
 }
-func (n *Node) GetSuccessors(_ *Nothing, successors []NodeAddress) error {
-	successors = n.Successors
+func (n *Node) GetSuccessors(_ *Nothing, successors *[]NodeAddress) error {
+	successors = &n.Successors
 	return nil
 }
 
 func (n *Node) stabilize() error {
 	var succPredecessor NodeAddress
+	if len(n.Successors) == 0 {
+		n.Successors = append(n.Successors, n.Address)
+		return nil
+	}
 	if err := Call(string(n.Successors[0]), "Node.GetPredecessor", &Nothing{}, &succPredecessor); err != nil {
 		if len(n.Successors) == 1 {
 			n.Successors[0] = n.Address
@@ -219,6 +224,9 @@ func (n *Node) stabilize() error {
 		log.Printf("error while getting predecessor: %v", err)
 		return err
 	}
+	log.Print(n.Address)
+	log.Print(succPredecessor)
+	log.Print(n.Successors[0])
 	if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), false) {
 		var successors []NodeAddress
 		if err := Call(string(succPredecessor), "Node.GetSuccessors", &Nothing{}, &successors); err != nil {
@@ -253,6 +261,14 @@ func (n *Node) Notify(address NodeAddress, _ *Nothing) error {
 	}
 	return nil
 }
+func (n *Node) stabilizeAndFix() {
+	for {
+		n.stabilize()
+		time.Sleep(time.Millisecond * 250)
+		//fix fingers here
+		time.Sleep(time.Millisecond * 250)
+	}
+}
 func main() {
 	quit := false
 	listening := false
@@ -284,7 +300,12 @@ func main() {
 		case "create":
 			if listening == false {
 				listening = true
+				node.Address = NodeAddress(address+":"+port)
 				go create(address, ":"+port, node)
+				time.Sleep(time.Millisecond * 100)
+				node.Predecessor = NodeAddress(address+":"+port)
+				node.Successors = append(node.Successors, NodeAddress(address+":"+port))
+				go node.stabilizeAndFix()
 			} else {
 				log.Print("Already created or joined a node.")
 			}
@@ -292,6 +313,9 @@ func main() {
 			if listening == false {
 				if err := Call(s[1], "Node.Join", address+":"+port, &Nothing{}); err == nil {
 					node.Successors = append(node.Successors, NodeAddress(s[1]))
+					go create(address, ":"+port, node)
+					time.Sleep(time.Millisecond * 100)
+					go node.stabilizeAndFix()
 					listening = true
 					log.Printf("Successfully join circle at %s:%s", address, port)
 				} else {
