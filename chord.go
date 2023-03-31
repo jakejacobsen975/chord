@@ -31,7 +31,10 @@ type find_successor_return struct {
 	Bool      bool
 	Successor NodeAddress
 }
-
+type NodeData struct {
+	Successors []NodeAddress
+	Predecessor NodeAddress
+}
 var two = big.NewInt(2)
 var hashMod = new(big.Int).Exp(big.NewInt(2), big.NewInt(keySize), nil)
 
@@ -72,7 +75,7 @@ func create(address, port string, node *Node) {
 	rpc.Register(node)
 	rpc.HandleHTTP()
 	node.Bucket = make(map[Key]string)
-
+	node.Address = NodeAddress(address+port)
 	log.Print("start server: creating new ring")
 	l, err := net.Listen("tcp", port)
 	if err != nil {
@@ -132,10 +135,6 @@ func (n *Node) dump() {
 }
 func (n *Node) Join(address string, _ *Nothing) error {
 	n.Predecessor = NodeAddress(address)
-	return nil
-}
-func (n *Node) GetPredecessor(_ *Nothing, predecessor *NodeAddress) error {
-	predecessor = &n.Predecessor
 	return nil
 }
 
@@ -220,18 +219,30 @@ func (n *Node) get_all(addr string, reply *map[string]string) error {
 	*reply = keysToRemove
 	return nil
 }
-func (n *Node) GetSuccessors(_ *Nothing, successors *[]NodeAddress) error {
-	successors = &n.Successors
+func (n *Node) GetNodeData(_ *Nothing, data *NodeData) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	data.Predecessor = n.Predecessor
+	data.Successors = n.Successors
 	return nil
 }
-
+func (n *Node) Nothing(_ *Nothing, _ *Nothing) error {
+	return nil
+}
+func (n *Node) checkPredecessor() {
+	if err := Call(string(n.Predecessor), "Node.Nothing", &Nothing{}, &Nothing{}); err != nil {
+		n.Predecessor = "";
+		log.Print("Predecessor has been removed")
+	}
+}
 func (n *Node) stabilize() error {
 	var succPredecessor NodeAddress
+	data := new(NodeData)
 	if len(n.Successors) == 0 {
 		n.Successors = append(n.Successors, n.Address)
 		return nil
 	}
-	if err := Call(string(n.Successors[0]), "Node.GetPredecessor", &Nothing{}, &succPredecessor); err != nil {
+	if err := Call(string(n.Successors[0]), "Node.GetNodeData", &Nothing{}, &data); err != nil {
 		if len(n.Successors) == 1 {
 			n.Successors[0] = n.Address
 		} else {
@@ -240,25 +251,27 @@ func (n *Node) stabilize() error {
 		log.Printf("error while getting predecessor: %v", err)
 		return err
 	}
-	log.Print(n.Address)
-	log.Print(succPredecessor)
-	log.Print(n.Successors[0])
-	if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), false) {
-		var successors []NodeAddress
-		if err := Call(string(succPredecessor), "Node.GetSuccessors", &Nothing{}, &successors); err != nil {
-			if len(n.Successors) == 1 {
-				n.Successors[0] = n.Address
-			} else {
-				n.Successors = n.Successors[1:]
+	succPredecessor = data.Predecessor
+	if succPredecessor != "" {
+		if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), true) {
+			var successors []NodeAddress
+			if err := Call(string(succPredecessor), "Node.GetNodeData", &Nothing{}, &data); err != nil {
+				/*if len(n.Successors) == 1 {
+					n.Successors[0] = n.Address
+				} else {
+					n.Successors = n.Successors[1:]
+				}*/
+				log.Printf("error while getting successors: %v", err)
+				return err
 			}
-			log.Printf("error while getting successors: %v", err)
-			return err
+			//print(successors)
+			successors = data.Successors
+			successors = append([]NodeAddress{succPredecessor}, successors...)
+			if len(successors) > maxSuccessors {
+				successors = successors[:maxSuccessors]
+			}
+			n.Successors = successors
 		}
-		successors = append([]NodeAddress{succPredecessor}, successors...)
-		if len(successors) <= maxSuccessors {
-			successors = successors[:maxSuccessors]
-		}
-		n.Successors = successors
 	}
 	if err := Call(string(n.Successors[0]), "Node.Notify", n.Address, &Nothing{}); err != nil {
 		if len(n.Successors) == 1 {
@@ -282,6 +295,8 @@ func (n *Node) stabilizeAndFix() {
 		n.stabilize()
 		time.Sleep(time.Millisecond * 250)
 		//fix fingers here
+		time.Sleep(time.Millisecond * 250)
+		n.checkPredecessor()
 		time.Sleep(time.Millisecond * 250)
 	}
 }
@@ -316,7 +331,6 @@ func main() {
 		case "create":
 			if listening == false {
 				listening = true
-				node.Address = NodeAddress(address+":"+port)
 				go create(address, ":"+port, node)
 				time.Sleep(time.Millisecond * 100)
 				node.Predecessor = NodeAddress(address+":"+port)
