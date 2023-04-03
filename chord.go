@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -26,9 +27,13 @@ const (
 type Key string
 type NodeAddress string
 type Nothing struct{}
-type find_successor_return struct {
+type FindSuccessorReturn struct {
 	Bool      bool
 	Successor NodeAddress
+}
+type NodeData struct {
+	Successors  []NodeAddress
+	Predecessor NodeAddress
 }
 
 var two = big.NewInt(2)
@@ -64,15 +69,18 @@ func help() {
 	fmt.Print("help) shows commands\n" +
 		"quit) quits program\n" +
 		"port <value>) changes port\n" +
-		"put <key> <value> <address>) adds key value pair\n" +
-		"create) creates new ring\n")
+		"put <key> <value>) adds key value pair\n" +
+		"create) creates new ring\n" +
+		"get <key>) gets value from key\n" +
+		"delete <key>) deletes key value pair\n" +
+		"join <address>) joins a circle where one of the \n")
 }
 
 func create(address, port string, node *Node) {
 	rpc.Register(node)
 	rpc.HandleHTTP()
 	node.Bucket = make(map[Key]string)
-
+	node.Address = NodeAddress(address + port)
 	log.Print("start server: creating new ring")
 	l, err := net.Listen("tcp", port)
 	if err != nil {
@@ -121,25 +129,28 @@ func (n *Node) dump() {
 	if len(n.Bucket) != 0 {
 		log.Print("Listing all key value pairs")
 		for k, v := range n.Bucket {
-			log.Printf("Key: %s, Value %s\n", k, v)
+			hex := fmt.Sprintf("%040x", hash(string(k)))
+			s := hex[:8] + ".. (" + string(k) + ")"
+			log.Printf("Key: %s, Value %s\n", s, v)
 		}
 	}
 	log.Print("Listing successors")
 	for _, v := range n.Successors {
-		log.Printf("%s\n", v)
+		hex := fmt.Sprintf("%040x", hash(string(v)))
+		s := hex[:8] + ".. (" + string(v) + ")"
+		log.Printf("%s\n", s)
 	}
-	log.Printf("Predecessor: %s\n", n.Predecessor)
+	v := n.Predecessor
+	hex := fmt.Sprintf("%040x", hash(string(v)))
+	s := hex[:8] + ".. (" + string(v) + ")"
+	log.Printf("Predecessor: %s\n", s)
 }
 func (n *Node) Join(address string, _ *Nothing) error {
 	n.Predecessor = NodeAddress(address)
 	return nil
 }
-func (n *Node) GetPredecessor(_ *Nothing, predecessor NodeAddress) error {
-	predecessor = n.Predecessor
-	return nil
-}
 
-func (n *Node) Find_successor(id string, response find_successor_return) error {
+func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 	if between(hash(string(id)), hash(string(n.Address)), hash(string(n.Successors[0])), true) {
 		response.Successor = n.Successors[0]
 		response.Bool = true
@@ -157,9 +168,9 @@ func (n *Node) closest_preceding_node(id string) NodeAddress {
 }
 func find(id string, start NodeAddress) NodeAddress {
 	found, nextNode := false, start
-	nextNode_struct := find_successor_return{}
+	nextNode_struct := FindSuccessorReturn{}
 	for i := 0; !found && i < maxSteps; i++ {
-		if err := Call(string(start), "Node.Find_successor", &Nothing{}, nextNode_struct); err == nil {
+		if err := Call(string(start), "Node.Find_successor", &id, &nextNode_struct); err == nil {
 			found = nextNode_struct.Bool
 			start = nextNode_struct.Successor
 		}
@@ -184,11 +195,11 @@ func (n *Node) put_all(kv map[string]string, reply *bool) error {
 }
 
 func (n *Node) fixFingers(id string) {
-	i := rand.Intn(160) // choose a random index
-	response := find_successor_return{}
-	if err := n.Find_successor(id, response); err != nil {
-		log.Printf("error calling find_successor: %v", err)
-	}
+	i := rand.Intn(159) // choose a random index
+	response := FindSuccessorReturn{}
+	//if err := n.Find_successor(id, response); err != nil {
+	//	log.Printf("error calling find_successor: %v", err)
+	//}
 	n.FingerTable[i] = response.Successor
 
 	// loop and keep adding to successive entries as long as it is still in the right range
@@ -220,14 +231,30 @@ func (n *Node) get_all(addr string, reply *map[string]string) error {
 	*reply = keysToRemove
 	return nil
 }
-func (n *Node) GetSuccessors(_ *Nothing, successors []NodeAddress) error {
-	successors = n.Successors
+func (n *Node) GetNodeData(_ *Nothing, data *NodeData) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	data.Predecessor = n.Predecessor
+	data.Successors = n.Successors
 	return nil
 }
-
+func (n *Node) Nothing(_ *Nothing, _ *Nothing) error {
+	return nil
+}
+func (n *Node) checkPredecessor() {
+	if err := Call(string(n.Predecessor), "Node.Nothing", &Nothing{}, &Nothing{}); err != nil {
+		n.Predecessor = ""
+		log.Print("Predecessor has been removed")
+	}
+}
 func (n *Node) stabilize() error {
 	var succPredecessor NodeAddress
-	if err := Call(string(n.Successors[0]), "Node.GetPredecessor", &Nothing{}, &succPredecessor); err != nil {
+	data := new(NodeData)
+	if len(n.Successors) == 0 {
+		n.Successors = append(n.Successors, n.Address)
+		return nil
+	}
+	if err := Call(string(n.Successors[0]), "Node.GetNodeData", &Nothing{}, &data); err != nil {
 		if len(n.Successors) == 1 {
 			n.Successors[0] = n.Address
 		} else {
@@ -236,22 +263,27 @@ func (n *Node) stabilize() error {
 		log.Printf("error while getting predecessor: %v", err)
 		return err
 	}
-	if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), false) {
-		var successors []NodeAddress
-		if err := Call(string(succPredecessor), "Node.GetSuccessors", &Nothing{}, &successors); err != nil {
-			if len(n.Successors) == 1 {
-				n.Successors[0] = n.Address
-			} else {
-				n.Successors = n.Successors[1:]
+	succPredecessor = data.Predecessor
+	if succPredecessor != "" {
+		if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), true) {
+			var successors []NodeAddress
+			if err := Call(string(succPredecessor), "Node.GetNodeData", &Nothing{}, &data); err != nil {
+				/*if len(n.Successors) == 1 {
+					n.Successors[0] = n.Address
+				} else {
+					n.Successors = n.Successors[1:]
+				}*/
+				log.Printf("error while getting successors: %v", err)
+				return err
 			}
-			log.Printf("error while getting successors: %v", err)
-			return err
+			//print(successors)
+			successors = data.Successors
+			successors = append([]NodeAddress{succPredecessor}, successors...)
+			if len(successors) > maxSuccessors {
+				successors = successors[:maxSuccessors]
+			}
+			n.Successors = successors
 		}
-		successors = append([]NodeAddress{succPredecessor}, successors...)
-		if len(successors) <= maxSuccessors {
-			successors = successors[:maxSuccessors]
-		}
-		n.Successors = successors
 	}
 	if err := Call(string(n.Successors[0]), "Node.Notify", n.Address, &Nothing{}); err != nil {
 		if len(n.Successors) == 1 {
@@ -269,6 +301,16 @@ func (n *Node) Notify(address NodeAddress, _ *Nothing) error {
 		n.Predecessor = address
 	}
 	return nil
+}
+func (n *Node) stabilizeAndFix() {
+	for {
+		n.stabilize()
+		time.Sleep(time.Millisecond * 250)
+		//fix fingers here
+		time.Sleep(time.Millisecond * 250)
+		n.checkPredecessor()
+		time.Sleep(time.Millisecond * 250)
+	}
 }
 func main() {
 	quit := false
@@ -302,13 +344,21 @@ func main() {
 			if listening == false {
 				listening = true
 				go create(address, ":"+port, node)
+				time.Sleep(time.Millisecond * 100)
+				node.Predecessor = NodeAddress(address + ":" + port)
+				node.Successors = append(node.Successors, NodeAddress(address+":"+port))
+				go node.stabilizeAndFix()
 			} else {
 				log.Print("Already created or joined a node.")
 			}
 		case "join":
 			if listening == false {
-				if err := Call(s[1], "Node.Join", address+":"+port, &Nothing{}); err == nil {
+				found := find(string(node.Address), NodeAddress(s[1]))
+				if err := Call(string(found), "Node.Join", address+":"+port, &Nothing{}); err == nil {
 					node.Successors = append(node.Successors, NodeAddress(s[1]))
+					go create(address, ":"+port, node)
+					time.Sleep(time.Millisecond * 100)
+					go node.stabilizeAndFix()
 					listening = true
 					log.Printf("Successfully join circle at %s:%s", address, port)
 				} else {
@@ -326,15 +376,17 @@ func main() {
 			log.Printf("Changed port to %s", port)
 		case "get":
 			if listening == true {
-				if err = Call(s[2], "Node.Get", s[1], &Nothing{}); err != nil {
+				found := find(s[1], node.Address)
+				if err = Call(string(found), "Node.Get", s[1], &Nothing{}); err != nil {
 					log.Printf("error calling Get: %v", err)
 				}
 			} else {
 				log.Print("Not in a circle")
 			}
 		case "put":
-			if listening == true && len(s) == 4 {
-				if err = Call(s[3], "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
+			if listening == true && len(s) == 3 {
+				found := find(s[1], node.Address)
+				if err = Call(string(found), "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
 					log.Printf("error calling Put: %v", err)
 				} else {
 					log.Printf("Put key pair %s %s into bucket", s[1], s[2])
@@ -344,7 +396,8 @@ func main() {
 			}
 		case "delete":
 			if listening == true {
-				if err = Call(s[2], "Node.Delete", s[1], &Nothing{}); err != nil {
+				found := find(s[1], node.Address)
+				if err = Call(string(found), "Node.Delete", s[1], &Nothing{}); err != nil {
 					log.Printf("error calling Delete: %v", err)
 				}
 			} else {
