@@ -43,6 +43,7 @@ type Node struct {
 	Bucket map[Key]string
 	mu     sync.RWMutex
 }
+
 func Call(address, method string, request, response interface{}) error {
 	client, err := rpc.DialHTTP("tcp", address)
 	if err != nil {
@@ -183,7 +184,7 @@ func (n *Node) put_all(kv map[string]string, reply *bool) error {
 }
 
 func (n *Node) fixFingers(id string) {
-	i := rand.Intn(159) // choose a random index
+	i := rand.Intn(160) // choose a random index
 	response := find_successor_return{}
 	if err := n.Find_successor(id, response); err != nil {
 		log.Printf("error calling find_successor: %v", err)
