@@ -27,7 +27,7 @@ const (
 type Key string
 type NodeAddress string
 type Nothing struct{}
-type find_successor_return struct {
+type FindSuccessorReturn struct {
 	Bool      bool
 	Successor NodeAddress
 }
@@ -67,8 +67,11 @@ func help() {
 	fmt.Print("help) shows commands\n" +
 		"quit) quits program\n" +
 		"port <value>) changes port\n" +
-		"put <key> <value> <address>) adds key value pair\n" +
-		"create) creates new ring\n")
+		"put <key> <value>) adds key value pair\n" +
+		"create) creates new ring\n" +
+		"get <key>) gets value from key\n" +
+		"delete <key>) deletes key value pair\n" +
+		"join <address>) joins a circle where one of the \n")
 }
 
 func create(address, port string, node *Node) {
@@ -124,21 +127,28 @@ func (n *Node) dump() {
 	if len(n.Bucket) != 0 {
 		log.Print("Listing all key value pairs")
 		for k, v := range n.Bucket {
-			log.Printf("Key: %s, Value %s\n", k, v)
+			hex := fmt.Sprintf("%040x", hash(string(k)))
+			s := hex[:8] + ".. (" + string(k) + ")"
+			log.Printf("Key: %s, Value %s\n", s, v)
 		}
 	}
 	log.Print("Listing successors")
 	for _, v := range n.Successors {
-		log.Printf("%s\n", v)
+		hex := fmt.Sprintf("%040x", hash(string(v)))
+		s := hex[:8] + ".. (" + string(v) + ")"
+		log.Printf("%s\n", s)
 	}
-	log.Printf("Predecessor: %s\n", n.Predecessor)
+	v := n.Predecessor
+	hex := fmt.Sprintf("%040x", hash(string(v)))
+	s := hex[:8] + ".. (" + string(v) + ")"
+	log.Printf("Predecessor: %s\n", s)
 }
 func (n *Node) Join(address string, _ *Nothing) error {
 	n.Predecessor = NodeAddress(address)
 	return nil
 }
 
-func (n *Node) Find_successor(id string, response find_successor_return) error {
+func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 	if between(hash(string(id)), hash(string(n.Address)), hash(string(n.Successors[0])), true) {
 		response.Successor = n.Successors[0]
 		response.Bool = true
@@ -156,9 +166,9 @@ func (n *Node) closest_preceding_node(id string) NodeAddress {
 }
 func find(id string, start NodeAddress) NodeAddress {
 	found, nextNode := false, start
-	nextNode_struct := find_successor_return{}
+	nextNode_struct := FindSuccessorReturn{}
 	for i := 0; !found && i < maxSteps; i++ {
-		if err := Call(string(start), "Node.Find_successor", &Nothing{}, nextNode_struct); err == nil {
+		if err := Call(string(start), "Node.Find_successor", &id, &nextNode_struct); err == nil {
 			found = nextNode_struct.Bool
 			start = nextNode_struct.Successor
 		}
@@ -184,10 +194,10 @@ func (n *Node) put_all(kv map[string]string, reply *bool) error {
 
 func (n *Node) fixFingers(id string) {
 	i := rand.Intn(159) // choose a random index
-	response := find_successor_return{}
-	if err := n.Find_successor(id, response); err != nil {
-		log.Printf("error calling find_successor: %v", err)
-	}
+	response := FindSuccessorReturn{}
+	//if err := n.Find_successor(id, response); err != nil {
+	//	log.Printf("error calling find_successor: %v", err)
+	//}
 	n.FingerTable[i] = response.Successor
 
 	// loop and keep adding to successive entries as long as it is still in the right range
@@ -341,7 +351,8 @@ func main() {
 			}
 		case "join":
 			if listening == false {
-				if err := Call(s[1], "Node.Join", address+":"+port, &Nothing{}); err == nil {
+				found := find(string(node.Address), NodeAddress(s[1]))
+				if err := Call(string(found), "Node.Join", address+":"+port, &Nothing{}); err == nil {
 					node.Successors = append(node.Successors, NodeAddress(s[1]))
 					go create(address, ":"+port, node)
 					time.Sleep(time.Millisecond * 100)
@@ -363,15 +374,17 @@ func main() {
 			log.Printf("Changed port to %s", port)
 		case "get":
 			if listening == true {
-				if err = Call(s[2], "Node.Get", s[1], &Nothing{}); err != nil {
+				found := find(s[1], node.Address)
+				if err = Call(string(found), "Node.Get", s[1], &Nothing{}); err != nil {
 					log.Printf("error calling Get: %v", err)
 				}
 			} else {
 				log.Print("Not in a circle")
 			}
 		case "put":
-			if listening == true && len(s) == 4 {
-				if err = Call(s[3], "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
+			if listening == true && len(s) == 3 {
+				found := find(s[1], node.Address)
+				if err = Call(string(found), "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
 					log.Printf("error calling Put: %v", err)
 				} else {
 					log.Printf("Put key pair %s %s into bucket", s[1], s[2])
@@ -381,7 +394,8 @@ func main() {
 			}
 		case "delete":
 			if listening == true {
-				if err = Call(s[2], "Node.Delete", s[1], &Nothing{}); err != nil {
+				found := find(s[1], node.Address)
+				if err = Call(string(found), "Node.Delete", s[1], &Nothing{}); err != nil {
 					log.Printf("error calling Delete: %v", err)
 				}
 			} else {
