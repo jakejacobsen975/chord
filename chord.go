@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -105,6 +106,21 @@ func (n *Node) Put(args []string, _ *Nothing) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.Bucket[Key(args[0])] = args[1]
+	return nil
+}
+func (n *Node) Put_random(arg int, _ *Nothing) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	const letterBytes = "abcdefghijklmnopqrstuvwxyz"
+	for i := 0; i < arg; i++ {
+		result := make([]byte, 5)
+		for i := range result {
+			result[i] = letterBytes[rand.Intn(len(letterBytes))]
+		}
+		value := "random(" + string(result) + ")"
+		n.Bucket[Key(string(result))] = value
+		log.Printf("Put key pair %s %s into bucket", result, value)
+	}
 	return nil
 }
 func (n *Node) Delete(key string, _ *Nothing) error {
@@ -368,8 +384,7 @@ func main() {
 					if len(node.Successors) > 0 {
 						success := node.Successors[0]
 						var reply map[string]string
-						err := node.Get_all(string(success), &reply)
-						if err := Call(string(success), "Node.Get_all", &Nothing{}, &reply); err != nil {
+						if err := Call(string(found), "Node.Get_all", string(success), &reply); err != nil {
 							log.Printf("error calling get all: %v", err)
 						}
 						for key, value := range reply {
@@ -410,6 +425,19 @@ func main() {
 					log.Printf("error calling Put: %v", err)
 				} else {
 					log.Printf("Put key pair %s %s into bucket", s[1], s[2])
+				}
+			} else {
+				log.Print("Not in a circle")
+			}
+		case "putrandom":
+			if listening == true && len(s) == 2 {
+				found := find(s[1], node.Address)
+				num_random, err := strconv.Atoi(s[1])
+				if err != nil {
+					help()
+				}
+				if err = Call(string(found), "Node.Put_random", num_random, &Nothing{}); err != nil {
+					log.Printf("error calling Put_random: %v", err)
 				}
 			} else {
 				log.Print("Not in a circle")
