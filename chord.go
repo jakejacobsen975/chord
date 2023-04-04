@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -195,7 +196,7 @@ func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 func (n *Node) closest_preceding_node(id string) NodeAddress {
 	// skip this loop if you do not have finger tables implemented yet
 	for i := range n.FingerTable {
-		isBetween := between(hash(string(n.FingerTable[160-i])),hash(string(n.Address)),hash(id),true)
+		isBetween := between(hash(string(n.FingerTable[160-i])), hash(string(n.Address)), hash(id), true)
 		if isBetween == true {
 			return n.FingerTable[160-i]
 		}
@@ -239,7 +240,7 @@ func (n *Node) fixFingers() {
 	currentSucc := n.Successors[0]
 	data := new(NodeData)
 	for notBetween == true {
-		notBetween = between(hash(string(n.Address)),hash(string(currentSucc)),jump(string(n.Address), i),true)
+		notBetween = between(hash(string(n.Address)), hash(string(currentSucc)), jump(string(n.Address), i), true)
 		if !notBetween {
 			n.FingerTable[i] = currentSucc
 		} else {
@@ -258,14 +259,14 @@ func (n *Node) fixFingers() {
 			n.FingerTable[i] = next
 		} else {
 			for notBetween == true {
-				notBetween = between(hash(string(n.Address)),hash(string(currentSucc)),jump(string(n.Address), i),true)
+				notBetween = between(hash(string(n.Address)), hash(string(currentSucc)), jump(string(n.Address), i), true)
 				if !notBetween {
 					n.FingerTable[i] = currentSucc
 				} else {
 					if err := Call(string(currentSucc), "Node.GetNodeData", &Nothing{}, &data); err != nil {
 						log.Printf("Error getting Node Data: %v", err)
 					}
-				currentSucc = data.Successors[0]
+					currentSucc = data.Successors[0]
 				}
 			}
 			notBetween = true
