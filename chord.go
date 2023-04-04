@@ -104,7 +104,6 @@ func (n *Node) Ping(_ *Nothing, reply *string) error {
 func (n *Node) Put(args []string, _ *Nothing) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	log.Print("inside")
 	n.Bucket[Key(args[0])] = args[1]
 	return nil
 }
@@ -171,11 +170,9 @@ func find(id string, start NodeAddress) NodeAddress {
 	found, nextNode := false, start
 	nextNode_struct := FindSuccessorReturn{}
 	for i := 0; !found && i < maxSteps; i++ {
-		if err := Call(string(nextNode), "Node.Find_successor", &id, &nextNode_struct); err == nil {
+		if err := Call(string(start), "Node.Find_successor", &id, &nextNode_struct); err == nil {
 			found = nextNode_struct.Bool
-			if !found {
-				nextNode = nextNode_struct.Successor
-			}
+			start = nextNode_struct.Successor
 		}
 	}
 	if found {
@@ -241,9 +238,7 @@ func (n *Node) GetNodeData(_ *Nothing, data *NodeData) error {
 	data.Successors = n.Successors
 	return nil
 }
-func (n *Node) Nothing(_ *Nothing, _ *Nothing) error {
-	return nil
-}
+
 func (n *Node) checkPredecessor() {
 	if err := Call(string(n.Predecessor), "Node.Nothing", &Nothing{}, &Nothing{}); err != nil {
 		n.Predecessor = ""
@@ -338,7 +333,7 @@ func main() {
 			quit = true
 			var reply bool
 			if err := Call(string(node.Successors[0]), "Node.Put_all", node.Bucket, &reply); err != nil {
-				log.Printf("error calling put_all: %v", err)
+				log.Printf("error calling Ping: %v", err)
 			}
 		case "ping":
 			var reply string
@@ -372,6 +367,9 @@ func main() {
 						success := node.Successors[0]
 						var reply map[string]string
 						err := node.Get_all(string(success), &reply)
+						if err := Call(string(success), "Node.Get_all", &Nothing{}, &reply); err != nil {
+							log.Printf("error calling get all: %v", err)
+						}
 						for key, value := range reply {
 							node.Bucket[Key(key)] = value
 						}
@@ -406,8 +404,8 @@ func main() {
 		case "put":
 			if listening == true && len(s) == 3 {
 				found := find(s[1], node.Address)
-				log.Print(found)
 				if err = Call(string(found), "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
+					log.Printf("error calling Put: %v", err)
 				} else {
 					log.Printf("Put key pair %s %s into bucket", s[1], s[2])
 				}
