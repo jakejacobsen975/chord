@@ -150,6 +150,7 @@ func (n *Node) dump() {
 			log.Printf("Key: %s, Value %s\n", s, v)
 		}
 	}
+
 	log.Print("Listing successors")
 	for _, v := range n.Successors {
 		hex := fmt.Sprintf("%040x", hash(string(v)))
@@ -160,6 +161,17 @@ func (n *Node) dump() {
 	hex := fmt.Sprintf("%040x", hash(string(v)))
 	s := hex[:8] + ".. (" + string(v) + ")"
 	log.Printf("Predecessor: %s\n", s)
+	log.Print("\nFinger table")
+	same_value := n.FingerTable[0]
+	for inc, finger := range n.FingerTable {
+		if same_value != n.FingerTable[inc] {
+			hex := fmt.Sprintf("%040x", hash(string(finger)))
+			s := hex[:8] + ".. (" + string(finger) + ")"
+			log.Printf("%s\n", s)
+			same_value = n.FingerTable[inc]
+		}
+	}
+
 }
 func (n *Node) Join(address string, _ *Nothing) error {
 	n.Predecessor = NodeAddress(address)
