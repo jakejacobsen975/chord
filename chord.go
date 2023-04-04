@@ -238,7 +238,9 @@ func (n *Node) GetNodeData(_ *Nothing, data *NodeData) error {
 	data.Successors = n.Successors
 	return nil
 }
-
+func (n *Node) Nothing(_ *Nothing, _ *Nothing) error {
+	return nil
+}
 func (n *Node) checkPredecessor() {
 	if err := Call(string(n.Predecessor), "Node.Nothing", &Nothing{}, &Nothing{}); err != nil {
 		n.Predecessor = ""
