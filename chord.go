@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/rpc"
@@ -135,6 +134,8 @@ func (n *Node) Delete(key string, _ *Nothing) error {
 	return nil
 }
 func (n *Node) Get(key string, _ *Nothing) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if _, ok := n.Bucket[Key(key)]; !ok {
 		log.Printf("Get: key %s not found", key)
 	}
@@ -179,6 +180,8 @@ func (n *Node) Join(address string, _ *Nothing) error {
 }
 
 func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if between(hash(string(id)), hash(string(n.Address)), hash(string(n.Successors[0])), true) {
 		response.Successor = n.Successors[0]
 		response.Bool = true
@@ -191,6 +194,12 @@ func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 }
 func (n *Node) closest_preceding_node(id string) NodeAddress {
 	// skip this loop if you do not have finger tables implemented yet
+	for i := range n.FingerTable {
+		isBetween := between(hash(string(n.FingerTable[160-i])),hash(string(n.Address)),hash(id),true)
+		if isBetween == true {
+			return n.FingerTable[160-i]
+		}
+	}
 	return n.Successors[0]
 	// find the successor of id
 }
@@ -222,21 +231,44 @@ func (n *Node) Put_all(kv map[string]string, reply *bool) error {
 	return nil
 }
 
-func (n *Node) fixFingers(id string) {
-	i := rand.Intn(159) // choose a random index
-	response := FindSuccessorReturn{}
-	//if err := n.Find_successor(id, response); err != nil {
-	//	log.Printf("error calling find_successor: %v", err)
-	//}
-	n.FingerTable[i] = response.Successor
+func (n *Node) fixFingers() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	i := 0
+	notBetween := true
+	currentSucc := n.Successors[0]
+	data := new(NodeData)
+	for notBetween == true {
+		notBetween = between(hash(string(n.Address)),hash(string(currentSucc)),jump(string(n.Address), i),true)
+		if !notBetween {
+			n.FingerTable[i] = currentSucc
+		} else {
+			if err := Call(string(currentSucc), "Node.GetNodeData", &Nothing{}, &data); err != nil {
+				log.Printf("Error getting Node Data: %v", err)
+			}
+			currentSucc = data.Successors[0]
+		}
+	}
+	notBetween = true
 
 	// loop and keep adding to successive entries as long as it is still in the right range
-	for j := i + 1; j < 160; j++ {
-		next := n.FingerTable[j-1]
-		if between(hash(string(next)), hash(string(id)), hash(string(n.FingerTable[j])), true) {
-			n.FingerTable[j] = next
+	for i = 1; i <= 160; i++ {
+		next := n.FingerTable[i-1]
+		if between(hash(string(next)), hash(string(n.Address)), hash(string(n.FingerTable[i])), true) {
+			n.FingerTable[i] = next
 		} else {
-			break
+			for notBetween == true {
+				notBetween = between(hash(string(n.Address)),hash(string(currentSucc)),jump(string(n.Address), i),true)
+				if !notBetween {
+					n.FingerTable[i] = currentSucc
+				} else {
+					if err := Call(string(currentSucc), "Node.GetNodeData", &Nothing{}, &data); err != nil {
+						log.Printf("Error getting Node Data: %v", err)
+					}
+				currentSucc = data.Successors[0]
+				}
+			}
+			notBetween = true
 		}
 	}
 }
@@ -260,8 +292,6 @@ func (n *Node) Get_all(addr string, reply *map[string]string) error {
 	return nil
 }
 func (n *Node) GetNodeData(_ *Nothing, data *NodeData) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
 	data.Predecessor = n.Predecessor
 	data.Successors = n.Successors
 	return nil
@@ -276,6 +306,8 @@ func (n *Node) checkPredecessor() {
 	}
 }
 func (n *Node) stabilize() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	var succPredecessor NodeAddress
 	data := new(NodeData)
 	if len(n.Successors) == 0 {
@@ -334,7 +366,7 @@ func (n *Node) stabilizeAndFix() {
 	for {
 		n.stabilize()
 		time.Sleep(time.Millisecond * 250)
-		//fix fingers here
+		n.fixFingers()
 		time.Sleep(time.Millisecond * 250)
 		n.checkPredecessor()
 		time.Sleep(time.Millisecond * 250)
@@ -379,6 +411,9 @@ func main() {
 				time.Sleep(time.Millisecond * 100)
 				node.Predecessor = NodeAddress(address + ":" + port)
 				node.Successors = append(node.Successors, NodeAddress(address+":"+port))
+				for i := 0; i <= 160; i++ {
+					node.FingerTable = append(node.FingerTable, node.Address)
+				}
 				go node.stabilizeAndFix()
 			} else {
 				log.Print("Already created or joined a node.")
