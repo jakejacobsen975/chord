@@ -182,7 +182,7 @@ func find(id string, start NodeAddress) NodeAddress {
 	}
 	return ""
 }
-func (n *Node) put_all(kv map[string]string, reply *bool) error {
+func (n *Node) Put_all(kv map[string]string, reply *bool) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -213,7 +213,7 @@ func (n *Node) fixFingers(id string) {
 	}
 }
 
-func (n *Node) get_all(addr string, reply *map[string]string) error {
+func (n *Node) Get_all(addr string, reply *map[string]string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -333,6 +333,10 @@ func main() {
 			help()
 		case "quit":
 			quit = true
+			var reply bool
+			if err := Call(string(node.Successors[0]), "Node.Put_all", node.Bucket, &reply); err != nil {
+				log.Printf("error calling put_all: %v", err)
+			}
 		case "ping":
 			var reply string
 			if err := Call("localhost:"+port, "Node.Ping", &Nothing{}, &reply); err != nil {
@@ -364,7 +368,7 @@ func main() {
 					if len(node.Successors) > 0 {
 						success := node.Successors[0]
 						var reply map[string]string
-						err := node.get_all(string(success), &reply)
+						err := node.Get_all(string(success), &reply)
 						for key, value := range reply {
 							node.Bucket[Key(key)] = value
 						}
