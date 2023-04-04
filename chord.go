@@ -361,6 +361,19 @@ func main() {
 					go node.stabilizeAndFix()
 					listening = true
 					log.Printf("Successfully join circle at %s:%s", address, port)
+					if len(node.Successors) > 0 {
+						success := node.Successors[0]
+						var reply map[string]string
+						err := node.get_all(string(success), &reply)
+						for key, value := range reply {
+							node.Bucket[Key(key)] = value
+						}
+						if err != nil {
+							log.Print("Error with getting the values in the successor")
+						}
+					} else {
+						log.Print("there are no successors")
+					}
 				} else {
 					log.Print("Error joining circle")
 				}
