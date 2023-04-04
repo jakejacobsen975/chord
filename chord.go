@@ -104,6 +104,7 @@ func (n *Node) Ping(_ *Nothing, reply *string) error {
 func (n *Node) Put(args []string, _ *Nothing) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	log.Print("inside")
 	n.Bucket[Key(args[0])] = args[1]
 	return nil
 }
@@ -170,9 +171,11 @@ func find(id string, start NodeAddress) NodeAddress {
 	found, nextNode := false, start
 	nextNode_struct := FindSuccessorReturn{}
 	for i := 0; !found && i < maxSteps; i++ {
-		if err := Call(string(start), "Node.Find_successor", &id, &nextNode_struct); err == nil {
+		if err := Call(string(nextNode), "Node.Find_successor", &id, &nextNode_struct); err == nil {
 			found = nextNode_struct.Bool
-			start = nextNode_struct.Successor
+			if !found {
+				nextNode = nextNode_struct.Successor
+			}
 		}
 	}
 	if found {
@@ -399,8 +402,8 @@ func main() {
 		case "put":
 			if listening == true && len(s) == 3 {
 				found := find(s[1], node.Address)
+				log.Print(found)
 				if err = Call(string(found), "Node.Put", []string{s[1], s[2]}, &Nothing{}); err != nil {
-					log.Printf("error calling Put: %v", err)
 				} else {
 					log.Printf("Put key pair %s %s into bucket", s[1], s[2])
 				}
