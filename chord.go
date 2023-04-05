@@ -88,7 +88,6 @@ func create(address, port string, node *Node) {
 		log.Print("Listen Error: ", err)
 	}
 	log.Printf("Starting to listen on %s", address+port)
-	fmt.Print("> ")
 	for {
 		if err := http.Serve(l, nil); err != nil {
 			log.Print("HTTP Serve Error: ", err)
@@ -168,18 +167,16 @@ func (n *Node) dump() {
 	log.Print("Finger table")
 	same_value := n.FingerTable[0]
 	for inc, _ := range n.FingerTable {
-		if same_value != n.FingerTable[inc] || inc == 160 {
+		if same_value != n.FingerTable[inc] {
 			hex := fmt.Sprintf("%040x", hash(string(n.FingerTable[inc-1])))
 			s := hex[:8] + ".. (" + string(n.FingerTable[inc-1]) + ")"
-			if inc == 160 {
-				log.Printf("[%d] %s\n",inc,s)
-			} else {
-				log.Printf("[%d] %s\n",inc-1,s)
-			}
+			log.Printf("[%d] %s\n",inc-1,s)
 			same_value = n.FingerTable[inc]
 		}
 	}
-
+	hex = fmt.Sprintf("%040x", hash(string(n.FingerTable[160])))
+	s = hex[:8] + ".. (" + string(n.FingerTable[160]) + ")"
+	log.Printf("[%d] %s\n",160,s)
 }
 func (n *Node) Join(address string, _ *Nothing) error {
 	n.Predecessor = NodeAddress(address)
@@ -190,9 +187,11 @@ func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if between(hash(string(id)), hash(string(n.Address)), hash(string(n.Successors[0])), true) {
+		print("between")
 		response.Successor = n.Successors[0]
 		response.Bool = true
 	} else {
+		print("not between")
 		response.Bool = false
 		response.Successor = n.closest_preceding_node(id)
 	}
@@ -214,9 +213,12 @@ func find(id string, start NodeAddress) NodeAddress {
 	found, nextNode := false, start
 	nextNode_struct := FindSuccessorReturn{}
 	for i := 0; !found && i < maxSteps; i++ {
-		if err := Call(string(start), "Node.Find_successor", &id, &nextNode_struct); err == nil {
+		if err := Call(string(nextNode), "Node.Find_successor", &id, &nextNode_struct); err == nil {
 			found = nextNode_struct.Bool
-			start = nextNode_struct.Successor
+			if !found {
+				nextNode = nextNode_struct.Successor
+			}
+			//print(found)
 		}
 	}
 	if found {
@@ -432,6 +434,9 @@ func main() {
 					node.Successors = append(node.Successors, NodeAddress(s[1]))
 					go create(address, ":"+port, node)
 					time.Sleep(time.Millisecond * 100)
+					for i := 0; i <= 160; i++ {
+						node.FingerTable = append(node.FingerTable, node.Address)
+					}
 					go node.stabilizeAndFix()
 					listening = true
 					log.Printf("Successfully join circle at %s:%s", address, port)
@@ -485,13 +490,23 @@ func main() {
 			}
 		case "putrandom":
 			if listening == true && len(s) == 2 {
-				found := find(s[1], node.Address)
 				num_random, err := strconv.Atoi(s[1])
 				if err != nil {
 					help()
 				}
-				if err = Call(string(found), "Node.Put_random", num_random, &Nothing{}); err != nil {
-					log.Printf("error calling Put_random: %v", err)
+				const letterBytes = "abcdefghijklmnopqrstuvwxyz"
+				for i := 0; i < num_random; i++ {
+					result := make([]byte, 5)
+					for i := range result {
+						result[i] = letterBytes[rand.Intn(len(letterBytes))]
+					}
+					value := "random(" + string(result) + ")"
+					found := find(string(result), node.Address)
+					if err = Call(string(found), "Node.Put", []string{string(result), value}, &Nothing{}); err != nil {
+						log.Printf("error calling Put: %v", err)
+					} else {
+						log.Printf("Put key pair %s %s into bucket", string(result), value)
+					}
 				}
 			} else {
 				log.Print("Not in a circle")
