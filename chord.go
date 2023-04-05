@@ -151,25 +151,31 @@ func (n *Node) dump() {
 			s := hex[:8] + ".. (" + string(k) + ")"
 			log.Printf("Key: %s, Value %s\n", s, v)
 		}
+		log.Print("")
 	}
-
 	log.Print("Listing successors")
 	for _, v := range n.Successors {
 		hex := fmt.Sprintf("%040x", hash(string(v)))
 		s := hex[:8] + ".. (" + string(v) + ")"
 		log.Printf("%s\n", s)
 	}
+	log.Print("")
 	v := n.Predecessor
 	hex := fmt.Sprintf("%040x", hash(string(v)))
 	s := hex[:8] + ".. (" + string(v) + ")"
 	log.Printf("Predecessor: %s\n", s)
-	log.Print("\nFinger table")
+	log.Print("")
+	log.Print("Finger table")
 	same_value := n.FingerTable[0]
-	for inc, finger := range n.FingerTable {
-		if same_value != n.FingerTable[inc] {
-			hex := fmt.Sprintf("%040x", hash(string(finger)))
-			s := hex[:8] + ".. (" + string(finger) + ")"
-			log.Printf("%s\n", s)
+	for inc, _ := range n.FingerTable {
+		if same_value != n.FingerTable[inc] || inc == 160 {
+			hex := fmt.Sprintf("%040x", hash(string(n.FingerTable[inc-1])))
+			s := hex[:8] + ".. (" + string(n.FingerTable[inc-1]) + ")"
+			if inc == 160 {
+				log.Printf("[%d] %s\n",inc,s)
+			} else {
+				log.Printf("[%d] %s\n",inc-1,s)
+			}
 			same_value = n.FingerTable[inc]
 		}
 	}
