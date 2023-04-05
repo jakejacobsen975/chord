@@ -143,6 +143,11 @@ func (n *Node) Get(key string, _ *Nothing) error {
 	return nil
 }
 func (n *Node) dump() {
+	v := n.Address
+	hex := fmt.Sprintf("%040x", hash(string(v)))
+	s := hex[:8] + ".. (" + string(v) + ")"
+	log.Printf("Self: %s\n", s)
+	log.Print("")
 	if len(n.Bucket) != 0 {
 		log.Print("Listing all key value pairs")
 		for k, v := range n.Bucket {
@@ -159,9 +164,9 @@ func (n *Node) dump() {
 		log.Printf("%s\n", s)
 	}
 	log.Print("")
-	v := n.Predecessor
-	hex := fmt.Sprintf("%040x", hash(string(v)))
-	s := hex[:8] + ".. (" + string(v) + ")"
+	v = n.Predecessor
+	hex = fmt.Sprintf("%040x", hash(string(v)))
+	s = hex[:8] + ".. (" + string(v) + ")"
 	log.Printf("Predecessor: %s\n", s)
 	log.Print("")
 	log.Print("Finger table")
@@ -187,11 +192,9 @@ func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if between(hash(string(id)), hash(string(n.Address)), hash(string(n.Successors[0])), true) {
-		print("between")
 		response.Successor = n.Successors[0]
 		response.Bool = true
 	} else {
-		print("not between")
 		response.Bool = false
 		response.Successor = n.closest_preceding_node(id)
 	}
@@ -200,12 +203,12 @@ func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 }
 func (n *Node) closest_preceding_node(id string) NodeAddress {
 	// skip this loop if you do not have finger tables implemented yet
-	for i := range n.FingerTable {
-		isBetween := between(hash(string(n.FingerTable[160-i])), hash(string(n.Address)), hash(id), true)
-		if isBetween == true {
-			return n.FingerTable[160-i]
-		}
-	}
+	//for i := range n.FingerTable {
+	//	isBetween := between(hash(string(n.FingerTable[160-i])), hash(string(n.Address)), hash(id), true)
+	//	if isBetween == true {
+	//		return n.FingerTable[160-i]
+	//	}
+	//}
 	return n.Successors[0]
 	// find the successor of id
 }
@@ -248,12 +251,19 @@ func (n *Node) fixFingers() {
 	currentSucc := n.Successors[0]
 	data := new(NodeData)
 	for notBetween == true {
+		if currentSucc == n.Address {
+			for i = 0; i <= 160;i++ {
+				n.FingerTable[i] = n.Address
+			}
+			return
+		}
 		notBetween = between(hash(string(n.Address)), hash(string(currentSucc)), jump(string(n.Address), i), true)
 		if !notBetween {
 			n.FingerTable[i] = currentSucc
 		} else {
 			if err := Call(string(currentSucc), "Node.GetNodeData", &Nothing{}, &data); err != nil {
 				log.Printf("Error getting Node Data: %v", err)
+				return
 			}
 			currentSucc = data.Successors[0]
 		}
@@ -267,6 +277,12 @@ func (n *Node) fixFingers() {
 			n.FingerTable[i] = next
 		} else {
 			for notBetween == true {
+				if currentSucc == n.Address {
+					for i = i; i <= 160;i++ {
+						n.FingerTable[i] = n.Address
+					}
+					return
+				}
 				notBetween = between(hash(string(n.Address)), hash(string(currentSucc)), jump(string(n.Address), i), true)
 				if !notBetween {
 					n.FingerTable[i] = currentSucc
@@ -333,9 +349,15 @@ func (n *Node) stabilize() error {
 		return err
 	}
 	succPredecessor = data.Predecessor
+	var successors []NodeAddress
+	successors = data.Successors
+	successors = append([]NodeAddress{n.Successors[0]}, successors...)
+	if len(successors) > maxSuccessors {
+		successors = successors[:maxSuccessors]
+	}
+	n.Successors = successors
 	if succPredecessor != "" {
 		if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), true) {
-			var successors []NodeAddress
 			if err := Call(string(succPredecessor), "Node.GetNodeData", &Nothing{}, &data); err != nil {
 				/*if len(n.Successors) == 1 {
 					n.Successors[0] = n.Address
