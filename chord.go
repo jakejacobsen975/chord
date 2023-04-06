@@ -105,21 +105,7 @@ func (n *Node) Put(args []string, _ *Nothing) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.Bucket[Key(args[0])] = args[1]
-	return nil
-}
-func (n *Node) Put_random(arg int, _ *Nothing) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	const letterBytes = "abcdefghijklmnopqrstuvwxyz"
-	for i := 0; i < arg; i++ {
-		result := make([]byte, 5)
-		for i := range result {
-			result[i] = letterBytes[rand.Intn(len(letterBytes))]
-		}
-		value := "random(" + string(result) + ")"
-		n.Bucket[Key(string(result))] = value
-		log.Printf("Put key pair %s %s into bucket", result, value)
-	}
+	log.Printf("added key pair %s %s to this bucket", Key(args[0]), args[1])
 	return nil
 }
 func (n *Node) Delete(key string, _ *Nothing) error {
@@ -133,13 +119,19 @@ func (n *Node) Delete(key string, _ *Nothing) error {
 	log.Printf("Delete: [%s] was removed", deleted)
 	return nil
 }
-func (n *Node) Get(key string, _ *Nothing) error {
+
+type KeyBucket struct {
+	Key  string
+	Value string
+}
+func (n *Node) Get(key string, value *KeyBucket) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if _, ok := n.Bucket[Key(key)]; !ok {
 		log.Printf("Get: key %s not found", key)
 	}
-	log.Printf("Get: found %s => %s", key, n.Bucket[Key(key)])
+	value.Key = key
+	value.Value = n.Bucket[Key(key)]
 	return nil
 }
 func (n *Node) dump() {
@@ -204,7 +196,7 @@ func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 func (n *Node) closest_preceding_node(id string) NodeAddress {
 	// skip this loop if you do not have finger tables implemented yet
 	for i := range n.FingerTable {
-		isBetween := between(hash(string(n.FingerTable[160-i])), hash(string(n.Address)), hash(id), true)
+		isBetween := between(hash(string(n.Address)), hash(string(n.FingerTable[160-i])), hash(id), true)
 		if isBetween == true {
 			return n.FingerTable[160-i]
 		}
@@ -339,6 +331,7 @@ func (n *Node) stabilize() error {
 		} else {
 			n.Successors = n.Successors[1:]
 		}
+		log.Print("Removed Successor")
 		log.Printf("error while getting predecessor: %v", err)
 		return err
 	}
@@ -349,10 +342,30 @@ func (n *Node) stabilize() error {
 	if len(successors) > maxSuccessors {
 		successors = successors[:maxSuccessors]
 	}
-	n.Successors = successors
+	same := true
+	if len(n.Successors) != len(successors) {
+		same = false
+	}
+	if same == true {
+		for i, v := range n.Successors {
+			if v != successors[i] {
+				same = false
+			}
+		}
+	}
+	if same == false{
+		n.Successors = successors
+		log.Print("Successor list changed")
+	}
 	if succPredecessor != "" {
 		if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), true) {
 			if err := Call(string(succPredecessor), "Node.GetNodeData", &Nothing{}, &data); err != nil {
+				if len(n.Successors) == 1 {
+					n.Successors[0] = n.Address
+				} else {
+					n.Successors = n.Successors[1:]
+				}
+				log.Print("Removed Successor")
 				log.Printf("error while getting successors: %v", err)
 				return err
 			}
@@ -361,7 +374,21 @@ func (n *Node) stabilize() error {
 			if len(successors) > maxSuccessors {
 				successors = successors[:maxSuccessors]
 			}
-			n.Successors = successors
+			same = true
+			if len(n.Successors) != len(successors) {
+				same = false
+			}
+			if same == true {
+				for i, v := range n.Successors {
+					if v != successors[i] {
+						same = false
+					}
+				}
+			}
+			if same == false {
+				log.Print("Successors list changed")
+				n.Successors = successors
+			}
 		}
 	}
 	if err := Call(string(n.Successors[0]), "Node.Notify", n.Address, &Nothing{}); err != nil {
@@ -370,6 +397,7 @@ func (n *Node) stabilize() error {
 		} else {
 			n.Successors = n.Successors[1:]
 		}
+		log.Print("removed Successor")
 		log.Printf("error while notifying: %v", err)
 		return err
 	}
@@ -377,7 +405,10 @@ func (n *Node) stabilize() error {
 }
 func (n *Node) Notify(address NodeAddress, _ *Nothing) error {
 	if n.Predecessor == "" || between(hash(string(n.Predecessor)), hash(string(address)), hash(string(n.Address)), false) {
-		n.Predecessor = address
+		if n.Predecessor != address {
+			log.Print("Predecessor changed")
+			n.Predecessor = address
+		}
 	}
 	return nil
 }
@@ -483,9 +514,11 @@ func main() {
 		case "get":
 			if listening == true {
 				found := find(s[1], node.Address)
-				if err = Call(string(found), "Node.Get", s[1], &Nothing{}); err != nil {
+				keyValues := KeyBucket{}
+				if err = Call(string(found), "Node.Get", s[1], &keyValues); err != nil {
 					log.Printf("error calling Get: %v", err)
 				}
+				log.Printf("Get: found %s => %s", keyValues.Key, keyValues.Value)
 			} else {
 				log.Print("Not in a circle")
 			}
