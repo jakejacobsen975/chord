@@ -203,12 +203,12 @@ func (n *Node) Find_successor(id string, response *FindSuccessorReturn) error {
 }
 func (n *Node) closest_preceding_node(id string) NodeAddress {
 	// skip this loop if you do not have finger tables implemented yet
-	//for i := range n.FingerTable {
-	//	isBetween := between(hash(string(n.FingerTable[160-i])), hash(string(n.Address)), hash(id), true)
-	//	if isBetween == true {
-	//		return n.FingerTable[160-i]
-	//	}
-	//}
+	for i := range n.FingerTable {
+		isBetween := between(hash(string(n.FingerTable[160-i])), hash(string(n.Address)), hash(id), true)
+		if isBetween == true {
+			return n.FingerTable[160-i]
+		}
+	}
 	return n.Successors[0]
 	// find the successor of id
 }
@@ -221,7 +221,6 @@ func find(id string, start NodeAddress) NodeAddress {
 			if !found {
 				nextNode = nextNode_struct.Successor
 			}
-			//print(found)
 		}
 	}
 	if found {
@@ -247,18 +246,18 @@ func (n *Node) fixFingers() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	i := 0
-	notBetween := true
+	betweenB := false
 	currentSucc := n.Successors[0]
 	data := new(NodeData)
-	for notBetween == true {
+	for betweenB == false {
 		if currentSucc == n.Address {
 			for i = 0; i <= 160;i++ {
 				n.FingerTable[i] = n.Address
 			}
 			return
 		}
-		notBetween = between(hash(string(n.Address)), hash(string(currentSucc)), jump(string(n.Address), i), true)
-		if !notBetween {
+		betweenB = between(hash(string(n.Address)), jump(string(n.Address), i), hash(string(currentSucc)), true)
+		if betweenB {
 			n.FingerTable[i] = currentSucc
 		} else {
 			if err := Call(string(currentSucc), "Node.GetNodeData", &Nothing{}, &data); err != nil {
@@ -268,33 +267,28 @@ func (n *Node) fixFingers() {
 			currentSucc = data.Successors[0]
 		}
 	}
-	notBetween = true
+	betweenB = false
 
 	// loop and keep adding to successive entries as long as it is still in the right range
 	for i = 1; i <= 160; i++ {
-		next := n.FingerTable[i-1]
-		if between(hash(string(next)), hash(string(n.Address)), hash(string(n.FingerTable[i])), true) {
-			n.FingerTable[i] = next
-		} else {
-			for notBetween == true {
-				if currentSucc == n.Address {
-					for i = i; i <= 160;i++ {
-						n.FingerTable[i] = n.Address
-					}
-					return
+		for betweenB == false {
+			if currentSucc == n.Address {
+				for i = i; i <= 160;i++ {
+					n.FingerTable[i] = n.Address
 				}
-				notBetween = between(hash(string(n.Address)), hash(string(currentSucc)), jump(string(n.Address), i), true)
-				if !notBetween {
-					n.FingerTable[i] = currentSucc
-				} else {
-					if err := Call(string(currentSucc), "Node.GetNodeData", &Nothing{}, &data); err != nil {
-						log.Printf("Error getting Node Data: %v", err)
-					}
-					currentSucc = data.Successors[0]
-				}
+				return
 			}
-			notBetween = true
+			betweenB = between(hash(string(n.Address)), jump(string(n.Address), i), hash(string(currentSucc)), true)
+			if betweenB {
+				n.FingerTable[i] = currentSucc
+			} else {
+				if err := Call(string(currentSucc), "Node.GetNodeData", &Nothing{}, &data); err != nil {
+					log.Printf("Error getting Node Data: %v", err)
+				}
+				currentSucc = data.Successors[0]
+			}
 		}
+		betweenB = false
 	}
 }
 
@@ -359,15 +353,9 @@ func (n *Node) stabilize() error {
 	if succPredecessor != "" {
 		if between(hash(string(n.Address)), hash(string(succPredecessor)), hash(string(n.Successors[0])), true) {
 			if err := Call(string(succPredecessor), "Node.GetNodeData", &Nothing{}, &data); err != nil {
-				/*if len(n.Successors) == 1 {
-					n.Successors[0] = n.Address
-				} else {
-					n.Successors = n.Successors[1:]
-				}*/
 				log.Printf("error while getting successors: %v", err)
 				return err
 			}
-			//print(successors)
 			successors = data.Successors
 			successors = append([]NodeAddress{succPredecessor}, successors...)
 			if len(successors) > maxSuccessors {
@@ -425,8 +413,10 @@ func main() {
 		case "quit":
 			quit = true
 			var reply bool
-			if err := Call(string(node.Successors[0]), "Node.Put_all", node.Bucket, &reply); err != nil {
-				log.Printf("error calling Ping: %v", err)
+			if len(node.Successors[0]) != 0 {
+				if err := Call(string(node.Successors[0]), "Node.Put_all", node.Bucket, &reply); err != nil {
+					log.Printf("error calling Ping: %v", err)
+				}
 			}
 		case "ping":
 			var reply string
